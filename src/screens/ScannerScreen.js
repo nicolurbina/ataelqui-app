@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Text, Button, TextInput, Chip, RadioButton, Modal, Portal, List, IconButton } from 'react-native-paper';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
@@ -14,18 +14,22 @@ export default function ScannerScreen({ route, navigation }) {
   // ESTADOS DEL FORMULARIO
   const [showForm, setShowForm] = useState(false);
   const [isManual, setIsManual] = useState(false);
-  const [scanningForSku, setScanningForSku] = useState(false); // NUEVO ESTADO
+  const [scanningForSku, setScanningForSku] = useState(false);
 
   const [currentSku, setCurrentSku] = useState('');
   const [name, setName] = useState('');
-
+  
+  // CATEGORÍA CON SELECTOR
   const [category, setCategory] = useState('');
   const [showCatPicker, setShowCatPicker] = useState(false);
-  const CATEGORIES = ["Insumos", "Grasas", "Repostería", "Lácteos"];
+  const CATEGORIES = ["Insumos", "Grasas", "Repostería", "Lácteos", "Harinas"];
 
+  // CAMPOS NUEVOS (COMPATIBILIDAD API)
+  const [location, setLocation] = useState(''); // Antes aisle
   const [provider, setProvider] = useState('');
-  const [aisle, setAisle] = useState('');
   const [quantity, setQuantity] = useState('');
+  const [price, setPrice] = useState('');
+  const [cost, setCost] = useState('');
 
   const [format, setFormat] = useState('suelto');
   const [unitsPerBox, setUnitsPerBox] = useState('');
@@ -39,6 +43,7 @@ export default function ScannerScreen({ route, navigation }) {
 
   const resetFormFields = () => {
     setName(''); setCategory(''); setProvider(''); setQuantity('');
+    setLocation(''); setPrice(''); setCost(''); // Limpiar nuevos campos
     setUnitsPerBox(''); setFormat('suelto');
     setExpiryDate(stickyDate);
   };
@@ -51,24 +56,22 @@ export default function ScannerScreen({ route, navigation }) {
     setShowForm(true);
   };
 
-  // EFECTO PARA ABRIR MANUALMENTE DESDE OTRA PANTALLA
+  // ABRIR DESDE OTRA PANTALLA
   useEffect(() => {
     if (route?.params?.openManual) {
       handleManualEntry();
-      if (navigation) {
-        navigation.setParams({ openManual: undefined });
-      }
+      if (navigation) navigation.setParams({ openManual: undefined });
     }
   }, [route?.params]);
 
   const handleBarCodeScanned = async ({ data }) => {
     setScanned(true);
 
-    // NUEVA LÓGICA: Si estamos escaneando solo para el SKU
+    // LÓGICA ESPECIAL: ESCANEAR SOLO EL SKU
     if (scanningForSku) {
       setCurrentSku(data);
       setScanningForSku(false);
-      setShowForm(true); // Volvemos al formulario
+      setShowForm(true);
       return;
     }
 
@@ -78,8 +81,8 @@ export default function ScannerScreen({ route, navigation }) {
 
   const startSkuScan = () => {
     setScanningForSku(true);
-    setShowForm(false); // Ocultamos formulario
-    setScanned(false);  // Activamos cámara
+    setShowForm(false);
+    setScanned(false);
   };
 
   const checkSkuAndOpenForm = async (skuToCheck) => {
@@ -105,43 +108,52 @@ export default function ScannerScreen({ route, navigation }) {
 
   const onDateChange = (event, selectedDate) => {
     setShowPicker(false);
-    if (selectedDate) {
-      setExpiryDate(selectedDate);
-    }
+    if (selectedDate) setExpiryDate(selectedDate);
   };
 
   const handleSaveProduct = async () => {
-    if (!currentSku || !name || !quantity || !aisle || !category) return Alert.alert("Faltan Datos", "Verifica Categoría y otros campos.");
+    // Validación estricta para API
+    if (!currentSku || !name || !quantity || !location || !category || !price || !cost) {
+        return Alert.alert("Faltan Datos", "Todos los campos (Precio, Costo, Ubicación) son obligatorios.");
+    }
 
     setLoading(true);
     try {
-      let totalStock = parseInt(quantity);
+      let totalQty = parseInt(quantity);
       let details = "Unidad Suelta";
       if (format === 'caja') {
         if (!unitsPerBox) { setLoading(false); return Alert.alert("Error", "Indica unidades por caja."); }
-        totalStock = parseInt(quantity) * parseInt(unitsPerBox);
+        totalQty = parseInt(quantity) * parseInt(unitsPerBox);
         details = `Caja de ${unitsPerBox} un.`;
       }
 
       const dateString = expiryDate.toISOString().split('T')[0];
 
+      // GUARDAR (FORMATO HÍBRIDO APP + API)
       await addDoc(collection(db, "products"), {
-        sku: currentSku, name,
-        category: category,
-        provider, aisle,
-        stock: totalStock, format, unitsPerBox: format === 'caja' ? parseInt(unitsPerBox) : 1,
+        sku: currentSku, name, category, provider, 
+        location: location, // API usa location
+        aisle: location,    // Guardamos aisle también por si acaso tu app vieja lo busca
+        
+        price: parseFloat(price), 
+        cost: parseFloat(cost),
+        
+        stock: totalQty,    // App usa stock
+        quantity: totalQty, // API usa quantity
+        
+        format, unitsPerBox: format === 'caja' ? parseInt(unitsPerBox) : 1,
         expiryDate: dateString,
-        status: totalStock < 5 ? "Crítico" : "Saludable", createdAt: new Date()
+        status: totalQty < 5 ? "Crítico" : "Saludable", createdAt: new Date(), updatedAt: new Date()
       });
 
       await addDoc(collection(db, "kardex"), {
         sku: currentSku, productName: name, type: "Entrada",
-        quantity: totalStock, reason: "Ingreso (" + details + ")", date: new Date(), user: "Bodeguero"
+        quantity: totalQty, reason: "Ingreso (" + details + ")", date: new Date(), user: "Bodeguero"
       });
 
       setStickyDate(expiryDate);
 
-      Alert.alert("¡Guardado!", "Listo para el siguiente.", [
+      Alert.alert("¡Guardado!", "Sincronizado con Web/API.", [
         { text: "OK", onPress: () => { setShowForm(false); setScanned(false); } }
       ]);
     } catch (e) { Alert.alert("Error", e.message); } finally { setLoading(false); }
@@ -166,41 +178,31 @@ export default function ScannerScreen({ route, navigation }) {
 
           <TextInput label="Nombre" value={name} onChangeText={setName} mode="outlined" style={styles.input} />
 
+          {/* CATEGORÍA Y PROVEEDOR */}
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            {/* SELECTOR DE CATEGORÍA */}
             <View style={{ flex: 1 }}>
               <TouchableOpacity onPress={() => setShowCatPicker(true)}>
-                <TextInput
-                  label="Categoría"
-                  value={category}
-                  mode="outlined"
-                  editable={false}
-                  right={<TextInput.Icon icon="chevron-down" onPress={() => setShowCatPicker(true)} />}
-                  style={[styles.input, { backgroundColor: 'white' }]}
-                />
+                <TextInput label="Categoría" value={category} mode="outlined" editable={false} right={<TextInput.Icon icon="chevron-down" onPress={() => setShowCatPicker(true)} />} style={[styles.input, { backgroundColor: 'white' }]} />
               </TouchableOpacity>
             </View>
             <TextInput label="Proveedor" value={provider} onChangeText={setProvider} mode="outlined" style={[styles.input, { flex: 1 }]} />
           </View>
 
+          {/* PRECIO Y COSTO (NUEVO) */}
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TextInput label="Pasillo" value={aisle} onChangeText={setAisle} mode="outlined" style={[styles.input, { flex: 1 }]} />
+            <TextInput label="Precio Venta" value={price} onChangeText={setPrice} keyboardType="numeric" mode="outlined" style={[styles.input, { flex: 1 }]} />
+            <TextInput label="Costo Unit." value={cost} onChangeText={setCost} keyboardType="numeric" mode="outlined" style={[styles.input, { flex: 1 }]} />
+          </View>
 
+          {/* UBICACIÓN Y FECHA */}
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TextInput label="Ubicación" value={location} onChangeText={setLocation} mode="outlined" style={[styles.input, { flex: 1 }]} />
             <TouchableOpacity onPress={() => setShowPicker(true)} style={{ flex: 1 }}>
-              <TextInput
-                label="Vencimiento"
-                value={expiryDate.toLocaleDateString()}
-                mode="outlined"
-                editable={false}
-                right={<TextInput.Icon icon="calendar" onPress={() => setShowPicker(true)} />}
-                style={[styles.input, { backgroundColor: '#FFF3E0' }]}
-              />
+              <TextInput label="Vencimiento" value={expiryDate.toLocaleDateString()} mode="outlined" editable={false} right={<TextInput.Icon icon="calendar" onPress={() => setShowPicker(true)} />} style={[styles.input, { backgroundColor: '#FFF3E0' }]} />
             </TouchableOpacity>
           </View>
 
-          {showPicker && (
-            <DateTimePicker value={expiryDate} mode="date" display="default" onChange={onDateChange} />
-          )}
+          {showPicker && <DateTimePicker value={expiryDate} mode="date" display="default" onChange={onDateChange} />}
 
           <RadioButton.Group onValueChange={setFormat} value={format}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
@@ -219,17 +221,11 @@ export default function ScannerScreen({ route, navigation }) {
           <Button mode="text" onPress={() => { setShowForm(false); setScanned(false); }} style={{ marginTop: 10 }}>Cancelar</Button>
         </ScrollView>
 
-        {/* MODAL PARA SELECCIONAR CATEGORÍA */}
         <Portal>
           <Modal visible={showCatPicker} onDismiss={() => setShowCatPicker(false)} contentContainerStyle={styles.modal}>
             <Text variant="titleMedium" style={{ marginBottom: 15, textAlign: 'center' }}>Selecciona Categoría</Text>
             {CATEGORIES.map((cat) => (
-              <List.Item
-                key={cat}
-                title={cat}
-                onPress={() => { setCategory(cat); setShowCatPicker(false); }}
-                left={props => <List.Icon {...props} icon="tag-outline" />}
-              />
+              <List.Item key={cat} title={cat} onPress={() => { setCategory(cat); setShowCatPicker(false); }} left={props => <List.Icon {...props} icon="tag-outline" />} />
             ))}
           </Modal>
         </Portal>
