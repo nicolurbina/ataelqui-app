@@ -13,6 +13,7 @@ export default function HomeScreen() {
     const [accuracy, setAccuracy] = useState(100);
     const [totalStock, setTotalStock] = useState(0);
     const [expiryProjection, setExpiryProjection] = useState([0, 0, 0, 0]); // [Sem 1, Sem 2, Sem 3, Sem 4]
+    const [rotation, setRotation] = useState(0);
 
     useEffect(() => {
         // 1. ALERTA MÁS CRÍTICA (FEFO), STOCK TOTAL Y PROYECCIÓN
@@ -83,14 +84,34 @@ export default function HomeScreen() {
             setTasksCount(snap.docs.filter(d => d.data().status === 'Pendiente').length);
         });
 
-        return () => { unsubProd(); unsubCounts(); unsubReturns(); };
+        // 4. ROTACIÓN (NUEVO)
+        const qKardex = query(collection(db, "kardex"));
+        const unsubKardex = onSnapshot(qKardex, (snapshot) => {
+            let totalOutputs = 0;
+            const today = new Date();
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(today.getDate() - 30);
+
+            snapshot.docs.forEach(doc => {
+                const k = doc.data();
+                // Consideramos solo salidas en los últimos 30 días
+                if (k.type === 'Salida' && k.date) {
+                    const kDate = k.date.toDate ? k.date.toDate() : new Date(k.date);
+                    if (kDate >= thirtyDaysAgo) {
+                        totalOutputs += parseInt(k.quantity || 0);
+                    }
+                }
+            });
+            setRotation(totalOutputs);
+        });
+
+        return () => { unsubProd(); unsubCounts(); unsubReturns(); unsubKardex(); };
     }, []);
 
     // --- COMPONENTE INTERNO: GRÁFICO DE BARRAS ---
     const ExpiryChart = ({ data }) => {
         const max = Math.max(...data, 1); // Evitar división por 0
         // Colores: Rojo (Urgente), Naranja, Amarillo, Verde (Lejano)
-        // O según la imagen: Rojo, Naranja, Amarillo, Verde
         const colors = ['#FF5252', '#FF9800', '#FFEB3B', '#00E676'];
 
         return (
@@ -193,7 +214,9 @@ export default function HomeScreen() {
                                 </View>
                                 <MaterialCommunityIcons name="circle" size={8} color="#E0E0E0" />
                             </View>
-                            <Text variant="headlineMedium" style={{ fontWeight: 'bold', color: '#2962FF', marginTop: 10 }}>8.5x</Text>
+                            <Text variant="headlineMedium" style={{ fontWeight: 'bold', color: '#2962FF', marginTop: 10 }}>
+                                {totalStock > 0 ? (rotation / totalStock).toFixed(1) : "0.0"}x
+                            </Text>
                             <Text style={{ color: '#999', fontSize: 12 }}>Velocidad de salida</Text>
                         </Card.Content>
                     </Card>

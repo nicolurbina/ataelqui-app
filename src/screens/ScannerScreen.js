@@ -18,7 +18,7 @@ export default function ScannerScreen({ route, navigation }) {
 
   const [currentSku, setCurrentSku] = useState('');
   const [name, setName] = useState('');
-  
+
   // CATEGORÍA CON SELECTOR
   const [category, setCategory] = useState('');
   const [showCatPicker, setShowCatPicker] = useState(false);
@@ -26,10 +26,12 @@ export default function ScannerScreen({ route, navigation }) {
 
   // CAMPOS NUEVOS (COMPATIBILIDAD API)
   const [location, setLocation] = useState(''); // Antes aisle
+  const [showLocPicker, setShowLocPicker] = useState(false);
+  const WAREHOUSES = ["Bodega 1", "Bodega 2", "Bodega 3", "Bodega 4", "Bodega 5", "Cámara de Frío"];
+
   const [provider, setProvider] = useState('');
   const [quantity, setQuantity] = useState('');
-  const [price, setPrice] = useState('');
-  const [cost, setCost] = useState('');
+  const [minStock, setMinStock] = useState('10'); // Default 10
 
   const [format, setFormat] = useState('suelto');
   const [unitsPerBox, setUnitsPerBox] = useState('');
@@ -43,7 +45,8 @@ export default function ScannerScreen({ route, navigation }) {
 
   const resetFormFields = () => {
     setName(''); setCategory(''); setProvider(''); setQuantity('');
-    setLocation(''); setPrice(''); setCost(''); // Limpiar nuevos campos
+    setLocation(''); // Limpiar nuevos campos
+    setMinStock('10');
     setUnitsPerBox(''); setFormat('suelto');
     setExpiryDate(stickyDate);
   };
@@ -113,8 +116,8 @@ export default function ScannerScreen({ route, navigation }) {
 
   const handleSaveProduct = async () => {
     // Validación estricta para API
-    if (!currentSku || !name || !quantity || !location || !category || !price || !cost) {
-        return Alert.alert("Faltan Datos", "Todos los campos (Precio, Costo, Ubicación) son obligatorios.");
+    if (!currentSku || !name || !quantity || !location || !category) {
+      return Alert.alert("Faltan Datos", "Todos los campos son obligatorios.");
     }
 
     setLoading(true);
@@ -131,16 +134,14 @@ export default function ScannerScreen({ route, navigation }) {
 
       // GUARDAR (FORMATO HÍBRIDO APP + API)
       await addDoc(collection(db, "products"), {
-        sku: currentSku, name, category, provider, 
+        sku: currentSku, name, category, provider,
         location: location, // API usa location
         aisle: location,    // Guardamos aisle también por si acaso tu app vieja lo busca
-        
-        price: parseFloat(price), 
-        cost: parseFloat(cost),
-        
+
         stock: totalQty,    // App usa stock
         quantity: totalQty, // API usa quantity
-        
+        minStock: parseInt(minStock) || 10,
+
         format, unitsPerBox: format === 'caja' ? parseInt(unitsPerBox) : 1,
         expiryDate: dateString,
         status: totalQty < 5 ? "Crítico" : "Saludable", createdAt: new Date(), updatedAt: new Date()
@@ -188,15 +189,13 @@ export default function ScannerScreen({ route, navigation }) {
             <TextInput label="Proveedor" value={provider} onChangeText={setProvider} mode="outlined" style={[styles.input, { flex: 1 }]} />
           </View>
 
-          {/* PRECIO Y COSTO (NUEVO) */}
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TextInput label="Precio Venta" value={price} onChangeText={setPrice} keyboardType="numeric" mode="outlined" style={[styles.input, { flex: 1 }]} />
-            <TextInput label="Costo Unit." value={cost} onChangeText={setCost} keyboardType="numeric" mode="outlined" style={[styles.input, { flex: 1 }]} />
-          </View>
-
           {/* UBICACIÓN Y FECHA */}
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TextInput label="Ubicación" value={location} onChangeText={setLocation} mode="outlined" style={[styles.input, { flex: 1 }]} />
+            <View style={{ flex: 1 }}>
+              <TouchableOpacity onPress={() => setShowLocPicker(true)}>
+                <TextInput label="Bodega" value={location} mode="outlined" editable={false} right={<TextInput.Icon icon="chevron-down" onPress={() => setShowLocPicker(true)} />} style={[styles.input, { backgroundColor: 'white' }]} />
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity onPress={() => setShowPicker(true)} style={{ flex: 1 }}>
               <TextInput label="Vencimiento" value={expiryDate.toLocaleDateString()} mode="outlined" editable={false} right={<TextInput.Icon icon="calendar" onPress={() => setShowPicker(true)} />} style={[styles.input, { backgroundColor: '#FFF3E0' }]} />
             </TouchableOpacity>
@@ -217,6 +216,8 @@ export default function ScannerScreen({ route, navigation }) {
             {format === 'caja' && <TextInput label="Unid/Caja" value={unitsPerBox} onChangeText={setUnitsPerBox} keyboardType="numeric" mode="outlined" style={[styles.input, { flex: 1 }]} />}
           </View>
 
+          <TextInput label="Stock Mínimo" value={minStock} onChangeText={setMinStock} keyboardType="numeric" mode="outlined" style={styles.input} />
+
           <Button mode="contained" onPress={handleSaveProduct} loading={loading} buttonColor="#F36F21" style={{ marginTop: 20 }}>Guardar y Seguir</Button>
           <Button mode="text" onPress={() => { setShowForm(false); setScanned(false); }} style={{ marginTop: 10 }}>Cancelar</Button>
         </ScrollView>
@@ -226,6 +227,15 @@ export default function ScannerScreen({ route, navigation }) {
             <Text variant="titleMedium" style={{ marginBottom: 15, textAlign: 'center' }}>Selecciona Categoría</Text>
             {CATEGORIES.map((cat) => (
               <List.Item key={cat} title={cat} onPress={() => { setCategory(cat); setShowCatPicker(false); }} left={props => <List.Icon {...props} icon="tag-outline" />} />
+            ))}
+          </Modal>
+        </Portal>
+
+        <Portal>
+          <Modal visible={showLocPicker} onDismiss={() => setShowLocPicker(false)} contentContainerStyle={styles.modal}>
+            <Text variant="titleMedium" style={{ marginBottom: 15, textAlign: 'center' }}>Selecciona Bodega</Text>
+            {WAREHOUSES.map((wh) => (
+              <List.Item key={wh} title={wh} onPress={() => { setLocation(wh); setShowLocPicker(false); }} left={props => <List.Icon {...props} icon="map-marker-outline" />} />
             ))}
           </Modal>
         </Portal>
