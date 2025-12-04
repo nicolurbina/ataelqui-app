@@ -1,12 +1,44 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { View, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'react-native';
-import { Card, Text, Chip, IconButton, Portal, Modal, TextInput, Button, Searchbar, RadioButton, FAB, Menu, Divider } from 'react-native-paper';
+import { Card, Text, Chip, IconButton, Portal, Modal, TextInput, Button, Searchbar, RadioButton, FAB, Menu, Divider, List } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { useNavigation } from '@react-navigation/native';
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, addDoc, deleteDoc, where, getDocs } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
+
+// --- COMPONENTE REUTILIZABLE: SELECTION MODAL ---
+const SelectionModal = ({ visible, hide, title, items, onSelect, renderItem }) => {
+  return (
+    <Portal>
+      <Modal visible={visible} onDismiss={hide} contentContainerStyle={styles.modal}>
+        <Text variant="titleMedium" style={{ marginBottom: 15, textAlign: 'center', fontWeight: 'bold', color: '#F36F21' }}>{title}</Text>
+        <ScrollView style={{ maxHeight: 300 }}>
+          {items.length === 0 ? (
+            <Text style={{ textAlign: 'center', color: '#666', padding: 20 }}>No hay opciones disponibles.</Text>
+          ) : (
+            items.map((item, index) => (
+              <React.Fragment key={index}>
+                {renderItem ? (
+                  renderItem(item, () => { onSelect(item); hide(); })
+                ) : (
+                  <List.Item
+                    title={item}
+                    onPress={() => { onSelect(item); hide(); }}
+                    left={props => <List.Icon {...props} icon="chevron-right" color="#F36F21" />}
+                  />
+                )}
+                <Divider />
+              </React.Fragment>
+            ))
+          )}
+        </ScrollView>
+        <Button mode="text" onPress={hide} style={{ marginTop: 10 }}>Cerrar</Button>
+      </Modal>
+    </Portal>
+  );
+};
 
 // --- MODAL 1: EDITAR PRODUCTO ---
 const EditProductModal = ({ visible, hide, product }) => {
@@ -712,6 +744,197 @@ const CreateCountModal = ({ visible, hide }) => {
   );
 };
 
+// --- MODAL 6: ESCÁNER SIMPLE ---
+const SimpleScannerModal = ({ visible, hide, onScan }) => {
+  const [permission, requestPermission] = useCameraPermissions();
+
+  useEffect(() => {
+    if (visible && !permission?.granted) requestPermission();
+  }, [visible]);
+
+  if (!visible) return null;
+
+  return (
+    <Portal>
+      <Modal visible={visible} onDismiss={hide} contentContainerStyle={[styles.modal, { padding: 0, height: '100%', width: '100%', margin: 0 }]}>
+        <View style={{ flex: 1, backgroundColor: 'black' }}>
+          <CameraView
+            style={{ flex: 1 }}
+            facing="back"
+            onBarcodeScanned={({ data }) => { onScan(data); hide(); }}
+          />
+          <View style={{ position: 'absolute', top: 50, left: 20 }}>
+            <IconButton icon="close" iconColor="white" size={30} onPress={hide} />
+          </View>
+          <View style={{ position: 'absolute', bottom: 50, alignSelf: 'center', backgroundColor: 'rgba(0,0,0,0.6)', padding: 10, borderRadius: 5 }}>
+            <Text style={{ color: 'white', fontWeight: 'bold' }}>Escanea el código de barras</Text>
+          </View>
+        </View>
+      </Modal>
+    </Portal>
+  );
+};
+
+// --- MODAL 5: AGREGAR PRODUCTO ---
+const AddProductModal = ({ visible, hide }) => {
+  const [sku, setSku] = useState('');
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState('');
+  const [provider, setProvider] = useState('');
+  const [location, setLocation] = useState('');
+  const [stock, setStock] = useState('');
+  const [minStock, setMinStock] = useState('');
+  const [unitType, setUnitType] = useState('Unidad');
+  const [numBoxes, setNumBoxes] = useState(''); // Nuevo estado
+  const [unitsPerBox, setUnitsPerBox] = useState(''); // Nuevo estado
+  const [loading, setLoading] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+
+  const [showCatMenu, setShowCatMenu] = useState(false);
+  const [showLocMenu, setShowLocMenu] = useState(false);
+
+  const CATEGORIES = ["Insumos", "Grasas", "Repostería", "Lácteos", "Harinas", "Otros"];
+  const WAREHOUSES = ["Bodega 1", "Bodega 2", "Bodega 3", "Bodega 4", "Bodega 5", "Cámara de Frío"];
+
+  const handleSave = async () => {
+    if (!sku || !name || !category || !location) {
+      return Alert.alert("Error", "Completa los campos obligatorios (SKU, Nombre, Categoría, Bodega)");
+    }
+
+    let finalStock = 0;
+    if (unitType === 'Unidad') {
+      finalStock = parseInt(stock) || 0;
+    } else {
+      finalStock = (parseInt(numBoxes) || 0) * (parseInt(unitsPerBox) || 0);
+    }
+
+    setLoading(true);
+    try {
+      const q = query(collection(db, "products"), where("sku", "==", sku));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        setLoading(false);
+        return Alert.alert("Error", "El SKU ya existe.");
+      }
+
+      await addDoc(collection(db, "products"), {
+        sku, name, category, provider,
+        location, aisle: location,
+        unitType,
+        stock: finalStock,
+        quantity: finalStock,
+        minStock: parseInt(minStock) || 0,
+        // Guardamos detalles adicionales si es caja
+        numBoxes: unitType === 'Caja' ? (parseInt(numBoxes) || 0) : 0,
+        unitsPerBox: unitType === 'Caja' ? (parseInt(unitsPerBox) || 0) : 0,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      Alert.alert("Éxito", "Producto agregado correctamente.");
+      setSku(''); setName(''); setCategory(''); setProvider(''); setLocation('');
+      setStock(''); setMinStock(''); setUnitType('Unidad'); setNumBoxes(''); setUnitsPerBox('');
+      hide();
+    } catch (e) {
+      Alert.alert("Error", e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Portal>
+      <Modal visible={visible} onDismiss={hide} contentContainerStyle={styles.modal}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+          <Text variant="headlineSmall" style={{ fontWeight: 'bold', color: '#333' }}>Nuevo Producto</Text>
+          <IconButton icon="close" size={24} onPress={hide} />
+        </View>
+
+        <ScrollView>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>SKU</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TextInput value={sku} onChangeText={setSku} mode="outlined" placeholder="Ej: PAN-001" style={[styles.input, { flex: 1 }]} dense />
+                <IconButton icon="barcode-scan" iconColor="#F36F21" size={28} onPress={() => setShowScanner(true)} />
+              </View>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Categoría</Text>
+              <TouchableOpacity onPress={() => setShowCatMenu(true)}>
+                <TextInput value={category} mode="outlined" placeholder="Seleccionar" editable={false} right={<TextInput.Icon icon="chevron-down" />} style={styles.input} dense />
+              </TouchableOpacity>
+              <SelectionModal
+                visible={showCatMenu}
+                hide={() => setShowCatMenu(false)}
+                title="Seleccionar Categoría"
+                items={CATEGORIES}
+                onSelect={setCategory}
+              />
+            </View>
+          </View>
+
+          <Text style={styles.label}>Nombre del Producto</Text>
+          <TextInput value={name} onChangeText={setName} mode="outlined" placeholder="Ej: Harina Selecta 25kg" style={styles.input} dense />
+
+          <Text style={styles.label}>Proveedor</Text>
+          <TextInput value={provider} onChangeText={setProvider} mode="outlined" placeholder="Ej: Molino A" style={styles.input} dense />
+
+          <Text style={styles.label}>Bodega</Text>
+          <TouchableOpacity onPress={() => setShowLocMenu(true)}>
+            <TextInput value={location} mode="outlined" placeholder="Seleccionar" editable={false} right={<TextInput.Icon icon="chevron-down" />} style={styles.input} dense />
+          </TouchableOpacity>
+          <SelectionModal
+            visible={showLocMenu}
+            hide={() => setShowLocMenu(false)}
+            title="Seleccionar Bodega"
+            items={WAREHOUSES}
+            onSelect={setLocation}
+          />
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, marginTop: 5 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 20 }}>
+              <RadioButton value="Unidad" status={unitType === 'Unidad' ? 'checked' : 'unchecked'} onPress={() => setUnitType('Unidad')} color="#F36F21" />
+              <Text onPress={() => setUnitType('Unidad')}>Unidad</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <RadioButton value="Caja" status={unitType === 'Caja' ? 'checked' : 'unchecked'} onPress={() => setUnitType('Caja')} color="#F36F21" />
+              <Text onPress={() => setUnitType('Caja')}>Caja</Text>
+            </View>
+          </View>
+
+          {unitType === 'Unidad' ? (
+            <>
+              <Text style={styles.label}>Cantidad</Text>
+              <TextInput value={stock} onChangeText={setStock} keyboardType="numeric" mode="outlined" placeholder="0" style={styles.input} dense />
+            </>
+          ) : (
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>N° Cajas</Text>
+                <TextInput value={numBoxes} onChangeText={setNumBoxes} keyboardType="numeric" mode="outlined" placeholder="0" style={styles.input} dense />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>Unid/Caja</Text>
+                <TextInput value={unitsPerBox} onChangeText={setUnitsPerBox} keyboardType="numeric" mode="outlined" placeholder="0" style={styles.input} dense />
+              </View>
+            </View>
+          )}
+
+          <Text style={styles.label}>Stock Mínimo</Text>
+          <TextInput value={minStock} onChangeText={setMinStock} keyboardType="numeric" mode="outlined" placeholder="0" style={styles.input} dense />
+
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+            <Button mode="outlined" onPress={hide} textColor="#666" style={{ borderColor: '#ccc' }}>Cancelar</Button>
+            <Button mode="contained" onPress={handleSave} loading={loading} buttonColor="#F36F21">Guardar Producto</Button>
+          </View>
+        </ScrollView>
+      </Modal>
+      <SimpleScannerModal visible={showScanner} hide={() => setShowScanner(false)} onScan={setSku} />
+    </Portal>
+  );
+};
+
 // --- STOCK LIST ---
 function StockList() {
   const navigation = useNavigation();
@@ -721,6 +944,7 @@ function StockList() {
   const CATEGORIES = ["Todas", "Insumos", "Grasas", "Repostería", "Lácteos", "Otros"];
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [wasteModalVisible, setWasteModalVisible] = useState(false);
+  const [addProductModalVisible, setAddProductModalVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
 
   useEffect(() => {
@@ -783,9 +1007,10 @@ function StockList() {
         })}
         {filteredProducts.length === 0 && <Text style={{ textAlign: 'center', marginTop: 20, color: '#999' }}>No se encontraron productos.</Text>}
       </ScrollView>
-      <FAB icon="plus" label="Nuevo" style={styles.fab} onPress={() => navigation.navigate('Escanear', { openManual: true })} color="white" />
+      <FAB icon="plus" label="Nuevo" style={styles.fab} onPress={() => setAddProductModalVisible(true)} color="white" />
       <EditProductModal visible={editModalVisible} hide={() => setEditModalVisible(false)} product={selectedProduct} />
       <ReportWasteModal visible={wasteModalVisible} hide={() => setWasteModalVisible(false)} product={selectedProduct} />
+      <AddProductModal visible={addProductModalVisible} hide={() => setAddProductModalVisible(false)} />
     </View>
   );
 }
@@ -872,18 +1097,17 @@ function CountHistoryList() {
           <View style={{ flex: 1 }}>
             <Searchbar placeholder="Buscar..." onChangeText={setSearchQuery} value={searchQuery} style={{ backgroundColor: '#f0f0f0', height: 45 }} inputStyle={{ minHeight: 0 }} />
           </View>
-          <Menu
+          <TouchableOpacity onPress={() => setShowStatusMenu(true)} style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#ccc', borderRadius: 25, paddingHorizontal: 15, height: 45, backgroundColor: 'white' }}>
+            <Text style={{ marginRight: 5, color: '#555' }}>{statusFilter}</Text>
+            <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
+          </TouchableOpacity>
+          <SelectionModal
             visible={showStatusMenu}
-            onDismiss={() => setShowStatusMenu(false)}
-            anchor={
-              <TouchableOpacity onPress={() => setShowStatusMenu(true)} style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#ccc', borderRadius: 25, paddingHorizontal: 15, height: 45, backgroundColor: 'white' }}>
-                <Text style={{ marginRight: 5, color: '#555' }}>{statusFilter}</Text>
-                <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
-              </TouchableOpacity>
-            }
-          >
-            {STATUS_OPTIONS.map(s => <Menu.Item key={s} onPress={() => { setStatusFilter(s); setShowStatusMenu(false); }} title={s} />)}
-          </Menu>
+            hide={() => setShowStatusMenu(false)}
+            title="Filtrar por Estado"
+            items={STATUS_OPTIONS}
+            onSelect={setStatusFilter}
+          />
         </View>
       </View>
 
@@ -946,7 +1170,7 @@ function KardexList() {
             <View style={{ marginLeft: 15, flex: 1 }}>
               <Text style={{ fontWeight: 'bold' }}>{m.productName}</Text>
               <Text variant="bodySmall">{m.sku}</Text>
-              <Text variant="bodySmall" style={{ color: '#666', fontSize: 10 }}>{m.reason || m.type} â€¢ {m.formattedDate}</Text>
+              <Text variant="bodySmall" style={{ color: '#666', fontSize: 10 }}>{m.reason || m.type} • {m.formattedDate}</Text>
             </View>
             <Text variant="titleMedium" style={{ fontWeight: 'bold', color: m.type === 'Entrada' ? 'green' : '#D32F2F' }}>{m.type === 'Entrada' ? '+' : '-'}{m.quantity}</Text>
           </View>
@@ -989,3 +1213,4 @@ const styles = StyleSheet.create({
   label: { marginBottom: 5, fontWeight: 'bold', color: '#555' },
   fab: { position: 'absolute', margin: 16, right: 0, bottom: 0, backgroundColor: '#607D8B' }
 });
+

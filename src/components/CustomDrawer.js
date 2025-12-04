@@ -3,9 +3,19 @@ import { View, StyleSheet } from 'react-native';
 import { DrawerContentScrollView, DrawerItemList, DrawerItem } from '@react-navigation/drawer';
 import { Text, Avatar, Divider, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { signOut } from 'firebase/auth';
+import { auth } from '../../firebaseConfig';
 
 export default function CustomDrawer(props) {
     const theme = useTheme();
+
+    const handleLogout = async () => {
+        try {
+            await signOut(auth);
+        } catch (error) {
+            console.error("Error signing out: ", error);
+        }
+    };
 
     return (
         <View style={{ flex: 1 }}>
@@ -55,7 +65,7 @@ export default function CustomDrawer(props) {
                         marginLeft: 5, // TRUCO: Alinea el texto con los de arriba
                         fontSize: 15
                     }}
-                    onPress={() => alert('Cerrar sesión')}
+                    onPress={handleLogout}
                 />
                 <Text style={styles.version}>v1.0.5 - Ataelqui App</Text>
             </View>
