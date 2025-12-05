@@ -1,88 +1,126 @@
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Alert, Modal as NativeModal } from 'react-native';
-import { Text, Card, Button, FAB, TextInput, RadioButton, SegmentedButtons, IconButton } from 'react-native-paper';
+import { View, ScrollView, StyleSheet, Alert, Modal as NativeModal, TouchableOpacity, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { Text, Card, Button, FAB, TextInput, IconButton, Portal, Modal, List } from 'react-native-paper';
 import { collection, addDoc, query, where, getDocs, updateDoc, doc, onSnapshot, orderBy } from 'firebase/firestore';
-import { CameraView, useCameraPermissions } from 'expo-camera'; // Importamos cámara
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { db } from '../../firebaseConfig';
 
 export default function WasteScreen() {
   const [wastes, setWastes] = useState([]);
   const [filter, setFilter] = useState('all');
 
-  // ESTADOS DEL MODAL Y CÁMARA
+  // ESTADOS DEL MODAL
   const [modalVisible, setModalVisible] = useState(false);
-  const [cameraVisible, setCameraVisible] = useState(false);
-  const [permission, requestPermission] = useCameraPermissions();
 
+  // FORM STATE
   const [sku, setSku] = useState('');
+  const [productName, setProductName] = useState('');
   const [qty, setQty] = useState('');
   const [cause, setCause] = useState('Vencido');
+  const [lot, setLot] = useState('');
+  const [unitCost, setUnitCost] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // SEARCH STATE
+  const [allProducts, setAllProducts] = useState([]);
+  const [filteredProducts, setFilteredProducts] = useState([]);
+  const [showProductList, setShowProductList] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+
+  // CAUSES DROPDOWN
+  const [showCauseMenu, setShowCauseMenu] = useState(false);
+  const CAUSES = ["Vencido", "Daño"];
+
   useEffect(() => {
+    // 1. Listen to Waste History
     const q = query(collection(db, "waste"), orderBy("date", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setWastes(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-    if (!permission) requestPermission();
+
+    // 2. Fetch Products for Search
+    const fetchProducts = async () => {
+      const qP = query(collection(db, "products"));
+      const snapshot = await getDocs(qP);
+      setAllProducts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    };
+    fetchProducts();
+
     return () => unsubscribe();
-  }, [permission]);
+  }, []);
 
-  // INICIAR PROCESO DE MERMA
-  const startWasteProcess = () => {
-    setSku(''); setQty(''); setCause('Vencido');
-    // Por defecto abrimos cámara
-    setCameraVisible(true);
-    setModalVisible(true);
+  // --- SEARCH LOGIC ---
+  const handleSearch = (text) => {
+    setSku(text); // We use 'sku' state as the search input value temporarily
+    if (text.length > 1) {
+      const lower = text.toLowerCase();
+      const results = allProducts.filter(p =>
+        (p.name && p.name.toLowerCase().includes(lower)) ||
+        (p.sku && p.sku.toLowerCase().includes(lower))
+      );
+      setFilteredProducts(results);
+      setShowProductList(true);
+    } else {
+      setFilteredProducts([]);
+      setShowProductList(false);
+    }
   };
 
-  const handleBarCodeScanned = ({ data }) => {
-    setSku(data);
-    setCameraVisible(false); // Cerramos cámara, mostramos formulario
-    Alert.alert("Código Detectado", `SKU: ${data}`);
+  const handleSelectProduct = (product) => {
+    setSelectedProduct(product);
+    setSku(product.sku); // Display SKU or Name in input? Let's display Name for better UX, but keep SKU for logic
+    setProductName(product.name);
+    setLot(product.lot || '');
+    setUnitCost(product.cost ? String(product.cost) : '0');
+    setShowProductList(false);
+    Keyboard.dismiss();
   };
 
-  const switchToManual = () => {
-    setCameraVisible(false);
-    // Nos quedamos en el modal pero con el formulario visible
-  };
-
+  // --- SUBMIT LOGIC ---
   const handleConfirmWaste = async () => {
-    if (!sku || !qty) return Alert.alert("Error", "SKU y Cantidad obligatorios");
+    if (!selectedProduct || !qty) return Alert.alert("Error", "Selecciona un producto e ingresa la cantidad.");
     setLoading(true);
 
     try {
-      // 1. Verificar Stock
-      const q = query(collection(db, "products"), where("sku", "==", sku));
-      const snapshot = await getDocs(q);
-
-      if (snapshot.empty) {
-        setLoading(false);
-        return Alert.alert("Error", "SKU no encontrado en inventario.");
-      }
-
-      const pDoc = snapshot.docs[0];
-      const currentStock = pDoc.data().stock;
       const deduction = parseInt(qty);
+      const currentStock = selectedProduct.stock || 0;
 
+      // 1. Check Stock
       if (currentStock < deduction) {
         setLoading(false);
         return Alert.alert("Error", `Stock insuficiente. Tienes: ${currentStock}`);
       }
 
-      // 2. Descontar
-      await updateDoc(doc(db, "products", pDoc.id), { stock: currentStock - deduction });
+      // 2. Deduct Stock
+      await updateDoc(doc(db, "products", selectedProduct.id), { stock: currentStock - deduction });
 
-      // 3. Registrar Merma
-      await addDoc(collection(db, "waste"), { sku, productName: pDoc.data().name, quantity: deduction, cause, date: new Date() });
+      // 3. Record Waste
+      await addDoc(collection(db, "waste"), {
+        sku: selectedProduct.sku,
+        productName: selectedProduct.name,
+        quantity: deduction,
+        cause,
+        lot,
+        cost: parseFloat(unitCost) || 0,
+        date: new Date(),
+        user: "Bodeguero" // Replace with actual user if available
+      });
 
-      // 4. Registrar Kardex
-      await addDoc(collection(db, "kardex"), { sku, productName: pDoc.data().name, type: "Salida", quantity: deduction, reason: `Merma (${cause})`, date: new Date(), user: "Bodeguero" });
+      // 4. Record Kardex
+      await addDoc(collection(db, "kardex"), {
+        sku: selectedProduct.sku,
+        productName: selectedProduct.name,
+        type: "Salida",
+        quantity: deduction,
+        reason: `Merma (${cause})`,
+        date: new Date(),
+        user: "Bodeguero"
+      });
 
-      // 5. Trigger Alert for Waste
+      // 5. Alerts
       await addDoc(collection(db, "general_alerts"), {
         title: 'Merma Registrada',
-        desc: `Producto: ${pDoc.data().name}. Cantidad: ${deduction}. Causa: ${cause}.`,
+        desc: `Producto: ${selectedProduct.name}. Cantidad: ${deduction}. Causa: ${cause}.`,
         type: 'Merma',
         color: '#795548',
         icon: 'trash-can',
@@ -90,8 +128,22 @@ export default function WasteScreen() {
         isSystem: true
       });
 
-      Alert.alert("Baja Exitosa", "Inventario actualizado.");
-      setModalVisible(false);
+      // Low Stock Alert
+      const minStock = selectedProduct.minStock || 10;
+      if ((currentStock - deduction) <= minStock) {
+        await addDoc(collection(db, "general_alerts"), {
+          title: 'Quiebre de Stock',
+          desc: `El producto ${selectedProduct.name} ha alcanzado el nivel crítico. Stock actual: ${currentStock - deduction}.`,
+          type: 'Stock',
+          color: '#D32F2F',
+          icon: 'alert-octagon',
+          date: new Date().toISOString().split('T')[0],
+          isSystem: true
+        });
+      }
+
+      Alert.alert("Éxito", "Merma registrada correctamente.");
+      resetForm();
     } catch (e) {
       Alert.alert("Error", e.message);
     } finally {
@@ -99,70 +151,177 @@ export default function WasteScreen() {
     }
   };
 
+  const resetForm = () => {
+    setModalVisible(false);
+    setSku('');
+    setProductName('');
+    setQty('');
+    setCause('Vencido');
+    setLot('');
+    setUnitCost('');
+    setSelectedProduct(null);
+    setFilteredProducts([]);
+    setShowProductList(false);
+    setShowCauseMenu(false);
+  };
+
   const filteredList = filter === 'all' ? wastes : wastes.filter(w => w.cause.toLowerCase() === filter.toLowerCase());
 
   return (
     <View style={styles.container}>
-      <View style={{ padding: 15, backgroundColor: 'white' }}>
-        <SegmentedButtons value={filter} onValueChange={setFilter} buttons={[{ value: 'all', label: 'Todas' }, { value: 'vencido', label: 'Vencido' }, { value: 'daño', label: 'Daño' }]} />
+      {/* HEADER & FILTERS */}
+      <View style={{ padding: 15, backgroundColor: 'white', elevation: 2 }}>
+        <Text variant="titleLarge" style={{ fontWeight: 'bold', marginBottom: 10 }}>Registro de Mermas</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {['All', 'Vencido', 'Daño'].map((f) => (
+              <TouchableOpacity
+                key={f}
+                onPress={() => setFilter(f.toLowerCase())}
+                style={[styles.filterChip, filter === f.toLowerCase() && styles.activeFilterChip]}
+              >
+                <Text style={{ color: filter === f.toLowerCase() ? 'white' : '#555' }}>{f === 'All' ? 'Todas' : f}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
       </View>
 
+      {/* LIST */}
       <ScrollView style={{ padding: 10 }}>
         {filteredList.map((item) => (
           <Card key={item.id} style={styles.card}>
             <Card.Content>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontWeight: 'bold' }}>{item.productName}</Text>
-                <Text style={{ color: '#D32F2F', fontWeight: 'bold' }}>-{item.quantity}</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: 'bold', fontSize: 16 }}>{item.productName}</Text>
+                  <Text variant="bodySmall" style={{ color: '#666' }}>SKU: {item.sku}</Text>
+                </View>
+                <Text style={{ color: '#D32F2F', fontWeight: 'bold', fontSize: 16 }}>-{item.quantity}</Text>
               </View>
-              <Text variant="bodySmall">SKU: {item.sku} | {item.cause}</Text>
-              <Text variant="bodySmall" style={{ color: '#666' }}>{new Date(item.date.seconds * 1000).toLocaleDateString()}</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={styles.tag}><Text style={styles.tagText}>{item.cause}</Text></View>
+                  {item.lot && <View style={styles.tag}><Text style={styles.tagText}>Lote: {item.lot}</Text></View>}
+                </View>
+                <Text variant="bodySmall" style={{ color: '#999' }}>{new Date(item.date.seconds * 1000).toLocaleDateString()}</Text>
+              </View>
             </Card.Content>
           </Card>
         ))}
       </ScrollView>
 
-      <FAB icon="plus" style={styles.fab} onPress={startWasteProcess} label="Nueva Baja" />
+      <FAB icon="plus" style={styles.fab} onPress={() => setModalVisible(true)} label="Nueva Merma" />
 
-      {/* MODAL FULL SCREEN PARA EL PROCESO */}
-      <NativeModal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
-        {cameraVisible ? (
-          <View style={{ flex: 1, backgroundColor: 'black' }}>
-            <CameraView style={StyleSheet.absoluteFillObject} facing="back" onBarcodeScanned={handleBarCodeScanned} />
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-              <View style={{ width: 250, height: 250, borderWidth: 2, borderColor: 'white', borderRadius: 20 }} />
-            </View>
-            <View style={{ padding: 20, paddingBottom: 40 }}>
-              <Button mode="contained" buttonColor="white" textColor="black" icon="keyboard" onPress={switchToManual}>Ingresar Manualmente</Button>
-              <Button mode="text" textColor="white" onPress={() => setModalVisible(false)} style={{ marginTop: 10 }}>Cancelar</Button>
-            </View>
-          </View>
-        ) : (
-          <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 50 }}>
-            <Text variant="headlineSmall" style={{ marginBottom: 20 }}>Detalle de Merma</Text>
-            <TextInput label="SKU" value={sku} onChangeText={setSku} mode="outlined" style={styles.input} />
-            <TextInput label="Cantidad" value={qty} onChangeText={setQty} keyboardType="numeric" mode="outlined" style={styles.input} />
-
-            <Text style={{ marginTop: 10 }}>Causa:</Text>
-            <RadioButton.Group onValueChange={setCause} value={cause}>
-              <View style={{ flexDirection: 'row', marginBottom: 20 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}><RadioButton value="Vencido" /><Text>Vencido</Text></View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 20 }}><RadioButton value="Daño" /><Text>Daño</Text></View>
+      {/* MODAL FORM */}
+      <Portal>
+        <Modal visible={modalVisible} onDismiss={resetForm} contentContainerStyle={styles.modalContainer}>
+          <TouchableWithoutFeedback onPress={() => { setShowProductList(false); Keyboard.dismiss(); }}>
+            <View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+                <Text variant="titleMedium" style={{ fontWeight: 'bold' }}>Registrar Nueva Merma</Text>
+                <IconButton icon="close" size={20} onPress={resetForm} />
               </View>
-            </RadioButton.Group>
 
-            <Button mode="contained" buttonColor="#D32F2F" loading={loading} onPress={handleConfirmWaste}>Confirmar Baja</Button>
-            <Button mode="text" onPress={() => setModalVisible(false)} style={{ marginTop: 10 }}>Cancelar</Button>
-          </ScrollView>
-        )}
-      </NativeModal>
+              {/* Product Search */}
+              <View style={{ zIndex: 100 }}>
+                <Text style={styles.label}>Producto (Nombre o SKU)</Text>
+                <TextInput
+                  placeholder="Buscar por SKU o Nombre..."
+                  value={productName || sku}
+                  onChangeText={(t) => { setProductName(t); handleSearch(t); }}
+                  mode="outlined"
+                  style={styles.input}
+                  dense
+                  right={<TextInput.Icon icon="magnify" />}
+                />
+                {showProductList && (
+                  <View style={styles.dropdown}>
+                    <ScrollView style={{ maxHeight: 150 }} keyboardShouldPersistTaps="handled">
+                      {filteredProducts.map((p) => (
+                        <List.Item
+                          key={p.id}
+                          title={p.name}
+                          description={`SKU: ${p.sku} | Stock: ${p.stock}`}
+                          onPress={() => handleSelectProduct(p)}
+                          style={{ borderBottomWidth: 1, borderBottomColor: '#eee' }}
+                        />
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+
+              {/* Row 1: Lot & Qty */}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Lote</Text>
+                  <TextInput value={lot} onChangeText={setLot} mode="outlined" style={styles.input} dense placeholder="L-2023-X" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Cantidad</Text>
+                  <TextInput value={qty} onChangeText={setQty} keyboardType="numeric" mode="outlined" style={styles.input} dense placeholder="0" />
+                </View>
+              </View>
+
+              {/* Row 2: Cause & Cost */}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Causa</Text>
+                  <TouchableOpacity onPress={() => setShowCauseMenu(!showCauseMenu)}>
+                    <TextInput
+                      value={cause}
+                      mode="outlined"
+                      editable={false}
+                      right={<TextInput.Icon icon="chevron-down" onPress={() => setShowCauseMenu(!showCauseMenu)} />}
+                      style={styles.input}
+                      dense
+                    />
+                  </TouchableOpacity>
+                  {showCauseMenu && (
+                    <View style={styles.dropdown}>
+                      {CAUSES.map((c) => (
+                        <List.Item key={c} title={c} onPress={() => { setCause(c); setShowCauseMenu(false); }} />
+                      ))}
+                    </View>
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Costo Unitario</Text>
+                  <TextInput value={unitCost} onChangeText={setUnitCost} keyboardType="numeric" mode="outlined" style={styles.input} dense placeholder="0" />
+                </View>
+              </View>
+
+              {/* Buttons */}
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <Button mode="outlined" onPress={resetForm} textColor="#666" style={{ borderColor: '#ccc' }}>Cancelar</Button>
+                <Button mode="contained" onPress={handleConfirmWaste} buttonColor="#D32F2F" loading={loading}>Registrar Pérdida</Button>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+      </Portal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f0f0' },
-  card: { marginBottom: 10, backgroundColor: 'white' },
-  fab: { position: 'absolute', margin: 16, right: 0, bottom: 0, backgroundColor: '#F36F21' },
-  input: { marginBottom: 15, backgroundColor: 'white' }
+  container: { flex: 1, backgroundColor: '#F5F7FA' },
+  card: { marginBottom: 10, backgroundColor: 'white', borderRadius: 8, elevation: 1 },
+  fab: { position: 'absolute', margin: 16, right: 0, bottom: 0, backgroundColor: '#D32F2F' },
+  modalContainer: { backgroundColor: 'white', padding: 20, margin: 20, borderRadius: 10 },
+  input: { marginBottom: 15, backgroundColor: 'white', fontSize: 14 },
+  label: { marginBottom: 5, color: '#555', fontWeight: '500', fontSize: 12 },
+  dropdown: {
+    position: 'absolute', top: 65, left: 0, right: 0,
+    backgroundColor: 'white', borderWidth: 1, borderColor: '#eee', borderRadius: 5,
+    elevation: 5, zIndex: 1000
+  },
+  filterChip: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+    backgroundColor: '#E0E0E0', marginRight: 5
+  },
+  activeFilterChip: { backgroundColor: '#555' },
+  tag: { backgroundColor: '#F5F5F5', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
+  tagText: { fontSize: 10, color: '#666' }
 });

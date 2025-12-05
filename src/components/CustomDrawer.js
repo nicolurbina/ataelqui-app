@@ -4,51 +4,12 @@ import { DrawerContentScrollView, DrawerItem } from '@react-navigation/drawer';
 import { Text, Avatar, Divider, useTheme, Badge } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
-import { auth, db } from '../../firebaseConfig';
-import { collection, query, onSnapshot } from 'firebase/firestore';
+import { auth } from '../../firebaseConfig';
+import { useNotifications } from '../context/NotificationsContext';
 
 export default function CustomDrawer(props) {
     const theme = useTheme();
-    const [alertCount, setAlertCount] = useState(0);
-
-    useEffect(() => {
-        // 1. ALERTAS DE PRODUCTOS
-        const qProducts = query(collection(db, "products"));
-        const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
-            let count = 0;
-            const today = new Date();
-            snapshot.docs.forEach((doc) => {
-                const p = doc.data();
-                if (p.expiryDate) {
-                    const expDate = new Date(p.expiryDate);
-                    const diffDays = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
-                    if (diffDays <= 7) count++;
-                }
-                if (p.stock !== undefined && p.stock <= 10) count++;
-            });
-            // Update only product part of count? No, we need total.
-            // Since we have two listeners, we need to combine them.
-            // A simple way is to store them in separate states or refs.
-            // But here, let's just use a ref or separate state for each and sum them.
-            // Actually, let's just use a functional update if possible, or separate states.
-            setProductAlertsCount(count);
-        });
-
-        // 2. ALERTAS DE SISTEMA
-        const qAlerts = query(collection(db, "general_alerts"));
-        const unsubscribeAlerts = onSnapshot(qAlerts, (snapshot) => {
-            setSystemAlertsCount(snapshot.size);
-        });
-
-        return () => { unsubscribeProducts(); unsubscribeAlerts(); };
-    }, []);
-
-    const [productAlertsCount, setProductAlertsCount] = useState(0);
-    const [systemAlertsCount, setSystemAlertsCount] = useState(0);
-
-    useEffect(() => {
-        setAlertCount(productAlertsCount + systemAlertsCount);
-    }, [productAlertsCount, systemAlertsCount]);
+    const { badgeCount } = useNotifications();
 
     const handleLogout = async () => {
         try {
@@ -109,10 +70,10 @@ export default function CustomDrawer(props) {
                                 key={route.key}
                                 label={({ color }) => (
                                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1 }}>
-                                        <Text style={{ color, fontWeight: 'bold', marginLeft: -20 }}>{label}</Text>
-                                        {route.name === 'Alertas' && alertCount > 0 && (
+                                        <Text style={{ color, fontWeight: 'bold', marginLeft: 10 }}>{label}</Text>
+                                        {route.name === 'Alertas' && badgeCount > 0 && (
                                             <Badge size={22} style={{ backgroundColor: '#D32F2F', color: 'white', fontWeight: 'bold' }}>
-                                                {alertCount}
+                                                {badgeCount}
                                             </Badge>
                                         )}
                                     </View>

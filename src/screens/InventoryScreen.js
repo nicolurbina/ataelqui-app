@@ -291,6 +291,20 @@ const ReportWasteModal = ({ visible, hide, product, products }) => {
         user: "Bodeguero"
       });
 
+      // Check for Low Stock
+      const minStock = selectedProduct.minStock || 10;
+      if (newStock <= minStock) {
+        await addDoc(collection(db, "general_alerts"), {
+          title: 'Quiebre de Stock',
+          desc: `El producto ${selectedProduct.name} ha alcanzado el nivel crítico. Stock actual: ${newStock}.`,
+          type: 'Stock',
+          color: '#D32F2F',
+          icon: 'alert-octagon',
+          date: new Date().toISOString().split('T')[0],
+          isSystem: true
+        });
+      }
+
       Alert.alert("Listo", `Descontadas ${deduction} un.`);
       hide();
     } catch (e) { Alert.alert("Error", e.message); } finally { setLoading(false); }

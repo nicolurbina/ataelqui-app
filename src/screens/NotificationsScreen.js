@@ -4,12 +4,21 @@ import { Text, Card, Chip, Searchbar, ActivityIndicator, FAB, Divider, IconButto
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { collection, onSnapshot, query, addDoc, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
+import { useNotifications } from '../context/NotificationsContext';
+import { useFocusEffect } from '@react-navigation/native';
 
 export default function NotificationsScreen() {
   const [systemAlerts, setSystemAlerts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('Todas');
   const [loading, setLoading] = useState(true);
+  const { markAsSeen } = useNotifications();
+
+  useFocusEffect(
+    React.useCallback(() => {
+      markAsSeen();
+    }, [])
+  );
 
   useEffect(() => {
     // ONLY SYSTEM ALERTS (Persistent)

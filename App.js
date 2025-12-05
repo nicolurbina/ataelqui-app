@@ -12,6 +12,7 @@ import { theme } from './src/theme/theme';
 
 // COMPONENTES
 import CustomDrawer from './src/components/CustomDrawer';
+import { NotificationsProvider } from './src/context/NotificationsContext';
 
 // PANTALLAS
 import LoginScreen from './src/screens/LoginScreen';
@@ -145,9 +146,11 @@ export default function App() {
 
     return (
         <PaperProvider theme={theme}>
-            <NavigationContainer>
-                <DrawerNavigator />
-            </NavigationContainer>
+            <NotificationsProvider>
+                <NavigationContainer>
+                    <DrawerNavigator />
+                </NavigationContainer>
+            </NotificationsProvider>
         </PaperProvider>
     );
 }

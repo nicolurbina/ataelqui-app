@@ -1,48 +1,42 @@
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, Image, Alert, StyleSheet, TouchableOpacity, Platform, useWindowDimensions } from 'react-native';
-import { Text, TextInput, Button, Card, Chip, Searchbar, Modal, Portal, RadioButton, IconButton, Menu, Divider, List, Avatar } from 'react-native-paper';
-import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
+import { View, ScrollView, StyleSheet, Alert, TouchableOpacity, Image, useWindowDimensions } from 'react-native';
+import { Text, TextInput, Button, Card, Divider, IconButton, Modal, Portal, RadioButton, List, Chip } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { db } from '../../firebaseConfig';
-import { collection, addDoc, onSnapshot, query, where, orderBy, doc, updateDoc, getDocs } from 'firebase/firestore';
+import * as ImagePicker from 'expo-image-picker';
+import { collection, addDoc, query, where, getDocs, updateDoc, doc, onSnapshot, orderBy } from 'firebase/firestore';
+import { db, auth } from '../../firebaseConfig';
 
-// --- COMPONENTE REUTILIZABLE: SELECTION MODAL ---
-const SelectionModal = ({ visible, hide, title, items, onSelect, renderItem }) => {
-  return (
-    <Portal>
-      <Modal visible={visible} onDismiss={hide} contentContainerStyle={styles.modal}>
-        <Text variant="titleMedium" style={{ marginBottom: 15, textAlign: 'center', fontWeight: 'bold', color: '#F36F21' }}>{title}</Text>
-        <ScrollView style={{ maxHeight: 300 }}>
-          {items.length === 0 ? (
-            <Text style={{ textAlign: 'center', color: '#666', padding: 20 }}>No hay opciones disponibles.</Text>
+// --- CONSTANTS ---
+const DOC_TYPES = ["Factura", "Boleta", "Guía de Despacho"];
+const REASONS = ["Producto Vencido", "Envase Dañado", "Error de Pedido", "Rechazo Cliente"];
+
+// --- SELECTION MODAL COMPONENT ---
+const SelectionModal = ({ visible, hide, title, items, onSelect, renderItem }) => (
+  <Portal>
+    <Modal visible={visible} onDismiss={hide} contentContainerStyle={styles.modal}>
+      <Text variant="headlineSmall" style={{ marginBottom: 15 }}>{title}</Text>
+      <ScrollView style={{ maxHeight: 300 }}>
+        {items.map((item, index) => (
+          renderItem ? (
+            <React.Fragment key={index}>{renderItem(item, () => { onSelect(item); hide(); })}</React.Fragment>
           ) : (
-            items.map((item, index) => (
-              <React.Fragment key={index}>
-                {renderItem ? (
-                  renderItem(item, () => { onSelect(item); hide(); })
-                ) : (
-                  <List.Item
-                    title={item}
-                    onPress={() => { onSelect(item); hide(); }}
-                    left={props => <List.Icon {...props} icon="chevron-right" color="#F36F21" />}
-                  />
-                )}
-                <Divider />
-              </React.Fragment>
-            ))
-          )}
-        </ScrollView>
-        <Button mode="text" onPress={hide} style={{ marginTop: 10 }}>Cerrar</Button>
-      </Modal>
-    </Portal>
-  );
-};
+            <List.Item
+              key={index}
+              title={item}
+              onPress={() => { onSelect(item); hide(); }}
+              left={props => <List.Icon {...props} icon="check-circle-outline" />}
+            />
+          )
+        ))}
+      </ScrollView>
+      <Button mode="text" onPress={hide} style={{ marginTop: 10 }}>Cancelar</Button>
+    </Modal>
+  </Portal>
+);
 
-// --- PESTAÑA 1: NUEVA DEVOLUCIÓN ---
-function NewReturnForm() {
-  // Header State
+// --- PESTAÑA 1: FORMULARIO DE NUEVA DEVOLUCIÓN ---
+function NewReturnForm({ onReturnCreated }) {
   const [client, setClient] = useState('');
   const [docType, setDocType] = useState('Factura');
   const [invoice, setInvoice] = useState('');
@@ -50,45 +44,38 @@ function NewReturnForm() {
   const [vehicle, setVehicle] = useState('');
   const [route, setRoute] = useState('');
   const [driver, setDriver] = useState('');
-  const [evidence, setEvidence] = useState(null);
-  const [warehouse, setWarehouse] = useState('');
+  const [evidence, setEvidence] = useState(null); // Stores base64 string
+  const [observations, setObservations] = useState('');
 
-  // UI State
-  const [showDocTypeModal, setShowDocTypeModal] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showWarehouseModal, setShowWarehouseModal] = useState(false);
+  const [items, setItems] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [qty, setQty] = useState('');
+  const [reason, setReason] = useState('Producto Vencido');
+
+  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // Product Detail State
-  const [products, setProducts] = useState([]);
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [showProductModal, setShowProductModal] = useState(false);
-  const [qty, setQty] = useState('');
-  const [reason, setReason] = useState('Seleccionar...');
+  // Modals Visibility
+  const [showDocTypeModal, setShowDocTypeModal] = useState(false);
   const [showReasonModal, setShowReasonModal] = useState(false);
-
-  // Items List
-  const [items, setItems] = useState([]);
-
-  const DOC_TYPES = ["Factura", "Boleta", "Otro (Movimiento Interno)"];
-  const REASONS = ["Producto Vencido", "Envase Dañado", "Error de Pedido", "Rechazo Cliente"];
-  const WAREHOUSES = ["Bodega 1", "Bodega 2", "Bodega 3", "Bodega 4", "Bodega 5", "Cámara de Frío"];
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
-    const q = query(collection(db, "products"), orderBy("name"));
+    const q = query(collection(db, "products"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setProducts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsubscribe();
   }, []);
 
-  const onDateChange = (event, selected) => {
+  const onDateChange = (event, selectedDate) => {
     setShowDatePicker(false);
-    if (selected) setDate(selected);
+    if (selectedDate) setDate(selectedDate);
   };
 
   const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
+    let result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
@@ -102,71 +89,45 @@ function NewReturnForm() {
   };
 
   const handleAddItem = () => {
-    if (!selectedProduct || !qty || reason === 'Seleccionar...') {
-      return Alert.alert("Error", "Completa los datos del producto");
-    }
-    const newItem = {
+    if (!selectedProduct || !qty) return Alert.alert("Error", "Selecciona producto y cantidad");
+    setItems([...items, {
+      productId: selectedProduct.id,
       productName: selectedProduct.name,
       sku: selectedProduct.sku,
+      price: selectedProduct.price || 0, // Default price to 0 if undefined
       quantity: parseInt(qty),
-      reason,
-      price: selectedProduct.price || 0,
-      id: Date.now().toString() // temporary ID
-    };
-    setItems([...items, newItem]);
-    // Reset product fields
+      reason
+    }]);
     setSelectedProduct(null);
     setQty('');
-    setReason('Seleccionar...');
   };
 
-  const handleRemoveItem = (id) => {
-    setItems(items.filter(i => i.id !== id));
+  const handleRemoveItem = (index) => {
+    const newItems = [...items];
+    newItems.splice(index, 1);
+    setItems(newItems);
   };
 
   const handleSubmit = async () => {
-    if (!client || !invoice || !vehicle || !warehouse || items.length === 0) {
-      return Alert.alert("Error", "Faltan datos obligatorios o productos");
-    }
+    if (!client || !invoice || items.length === 0) return Alert.alert("Error", "Completa los campos obligatorios");
     setLoading(true);
+
     try {
       await addDoc(collection(db, "returns"), {
-        client,
-        docType,
-        invoice,
-        date,
-        vehicle,
-        route,
-        driver,
-        evidence,
-        warehouse,
+        client, docType, invoice, date,
+        vehicle: vehicle || '', // Ensure not undefined
+        route: route || '', // Ensure not undefined
+        driver: driver || '', // Ensure not undefined
         items,
         status: 'Pendiente',
-        createdAt: new Date(),
-        origin: 'Móvil'
+        evidence: evidence || null, // Ensure not undefined
+        observations: observations || '', // Ensure not undefined
+        createdAt: new Date()
       });
-      Alert.alert("Éxito", "Devolución registrada correctamente");
 
-      // Trigger Alert for New Return
-      await addDoc(collection(db, "general_alerts"), {
-        title: 'Nueva Devolución',
-        desc: `Cliente: ${client}. Documento: ${docType} ${invoice}.`,
-        type: 'Devolución',
-        color: '#1976D2',
-        icon: 'keyboard-return',
-        date: new Date().toISOString().split('T')[0],
-        isSystem: true
-      });
-      // Reset Form
-      setClient('');
-      setInvoice('');
-      setVehicle('');
-      setRoute('');
-      setDriver('');
-      setEvidence(null);
-      setWarehouse('');
-      setItems([]);
-      setDate(new Date());
+      Alert.alert("Éxito", "Devolución registrada correctamente");
+      setItems([]); setClient(''); setInvoice(''); setVehicle(''); setRoute(''); setDriver(''); setEvidence(null); setObservations('');
+      if (onReturnCreated) onReturnCreated();
     } catch (e) {
       Alert.alert("Error", e.message);
     } finally {
@@ -174,13 +135,8 @@ function NewReturnForm() {
     }
   };
 
-  // Filter products by warehouse
-  const filteredProducts = warehouse
-    ? products.filter(p => (p.location === warehouse || p.aisle === warehouse))
-    : [];
-
   return (
-    <ScrollView contentContainerStyle={styles.scrollContainer}>
+    <ScrollView contentContainerStyle={{ padding: 20 }}>
       <Text variant="titleMedium" style={{ color: '#F36F21', fontWeight: 'bold', marginBottom: 15 }}>Nueva Devolución</Text>
 
       {/* Header Fields */}
@@ -211,8 +167,8 @@ function NewReturnForm() {
           {showDatePicker && <DateTimePicker value={date} mode="date" display="default" onChange={onDateChange} />}
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.label}>Vehículo / Patente</Text>
-          <TextInput placeholder="Ej: AB-CD-12" value={vehicle} onChangeText={setVehicle} mode="outlined" style={styles.input} dense />
+          <Text style={styles.label}>Vehículo / Transporte</Text>
+          <TextInput placeholder="Ej: Citroen, Camión 01..." value={vehicle} onChangeText={setVehicle} mode="outlined" style={styles.input} dense />
         </View>
       </View>
 
@@ -237,10 +193,17 @@ function NewReturnForm() {
       </View>
 
       <View style={{ marginBottom: 10 }}>
-        <Text style={styles.label}>Bodega</Text>
-        <TouchableOpacity onPress={() => setShowWarehouseModal(true)}>
-          <TextInput value={warehouse || "Seleccionar Bodega..."} mode="outlined" editable={false} right={<TextInput.Icon icon="chevron-down" onPress={() => setShowWarehouseModal(true)} />} style={styles.input} dense />
-        </TouchableOpacity>
+        <Text style={styles.label}>Observaciones / Descripción del Motivo</Text>
+        <TextInput
+          placeholder="Detalles adicionales sobre la devolución..."
+          value={observations}
+          onChangeText={setObservations}
+          mode="outlined"
+          style={[styles.input, { height: 80 }]}
+          multiline
+          numberOfLines={4}
+          dense
+        />
       </View>
 
       <Divider style={{ marginVertical: 15 }} />
@@ -251,10 +214,6 @@ function NewReturnForm() {
       <View style={{ marginBottom: 10 }}>
         <Text style={styles.label}>Producto</Text>
         <TouchableOpacity onPress={() => {
-          if (!warehouse) {
-            Alert.alert("Atención", "Seleccione una bodega primero");
-            return;
-          }
           setShowProductModal(true);
         }}>
           <TextInput
@@ -262,10 +221,6 @@ function NewReturnForm() {
             mode="outlined"
             editable={false}
             right={<TextInput.Icon icon="chevron-down" onPress={() => {
-              if (!warehouse) {
-                Alert.alert("Atención", "Seleccione una bodega primero");
-                return;
-              }
               setShowProductModal(true);
             }} />}
             style={styles.input}
@@ -309,7 +264,7 @@ function NewReturnForm() {
       </View>
 
       <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-        <Button mode="outlined" onPress={() => { setItems([]); setClient(''); setInvoice(''); setVehicle(''); setWarehouse(''); }} textColor="#666">Cancelar</Button>
+        <Button mode="outlined" onPress={() => { setItems([]); setClient(''); setInvoice(''); setVehicle(''); setRoute(''); setDriver(''); setEvidence(null); setObservations(''); }} textColor="#666">Cancelar</Button>
         <Button mode="contained" onPress={handleSubmit} loading={loading} buttonColor="#F36F21">Registrar Devolución</Button>
       </View>
 
@@ -320,14 +275,6 @@ function NewReturnForm() {
         title="Tipo de Documento"
         items={DOC_TYPES}
         onSelect={setDocType}
-      />
-
-      <SelectionModal
-        visible={showWarehouseModal}
-        hide={() => setShowWarehouseModal(false)}
-        title="Seleccionar Bodega"
-        items={WAREHOUSES}
-        onSelect={(w) => { setWarehouse(w); setSelectedProduct(null); }}
       />
 
       <SelectionModal
@@ -342,7 +289,7 @@ function NewReturnForm() {
         visible={showProductModal}
         hide={() => setShowProductModal(false)}
         title="Seleccionar Producto"
-        items={filteredProducts}
+        items={products}
         onSelect={setSelectedProduct}
         renderItem={(item, onSelect) => (
           <List.Item
@@ -406,7 +353,90 @@ function ReturnsList({ statusFilter }) {
   }, [statusFilter]);
 
   const handleAction = async (id, newStatus) => {
-    await updateDoc(doc(db, "returns", id), { status: newStatus });
+    try {
+      if (newStatus === 'Aprobado') {
+        const returnDoc = list.find(r => r.id === id);
+        if (!returnDoc) return;
+
+        for (const item of returnDoc.items) {
+          const isWaste = ["Producto Vencido", "Envase Dañado"].includes(item.reason);
+
+          if (isWaste) {
+            // --- CASE 1: WASTE (MERMA) ---
+            // NO DESCONTAMOS STOCK (El producto ya salió y vuelve malo)
+            const q = query(collection(db, "products"), where("sku", "==", item.sku));
+            const snapshot = await getDocs(q);
+
+            let cost = 0;
+            let lot = 'N/A';
+
+            if (!snapshot.empty) {
+              const productData = snapshot.docs[0].data();
+              cost = productData.cost || 0;
+              lot = productData.lot || 'N/A';
+            }
+
+            await addDoc(collection(db, "waste"), {
+              sku: item.sku,
+              productName: item.productName,
+              quantity: item.quantity,
+              cause: item.reason,
+              date: new Date(),
+              origin: `Devolución ${returnDoc.id}`,
+              cost: cost,
+              lot: lot
+            });
+
+            await addDoc(collection(db, "general_alerts"), {
+              title: 'Merma por Devolución',
+              desc: `Producto: ${item.productName}. Cantidad: ${item.quantity}. Causa: ${item.reason}.`,
+              type: 'Merma',
+              color: '#795548',
+              icon: 'trash-can',
+              date: new Date().toISOString().split('T')[0],
+              isSystem: true
+            });
+
+            await addDoc(collection(db, "kardex"), {
+              sku: item.sku,
+              productName: item.productName,
+              type: "Merma",
+              quantity: item.quantity,
+              reason: `Devolución (${item.reason})`,
+              date: new Date(),
+              user: "Sistema"
+            });
+
+          } else {
+            // --- CASE 2: GOOD CONDITION (STOCK) ---
+            const q = query(collection(db, "products"), where("sku", "==", item.sku));
+            const snapshot = await getDocs(q);
+
+            if (!snapshot.empty) {
+              const productDoc = snapshot.docs[0];
+              const currentStock = productDoc.data().stock || 0;
+              const newStock = currentStock + item.quantity;
+              await updateDoc(doc(db, "products", productDoc.id), { stock: newStock });
+
+              await addDoc(collection(db, "kardex"), {
+                sku: item.sku,
+                productName: item.productName,
+                type: "Entrada",
+                quantity: item.quantity,
+                reason: `Devolución Cliente (${returnDoc.client})`,
+                date: new Date(),
+                user: "Sistema"
+              });
+            }
+          }
+        }
+        Alert.alert("Aprobado", "Inventario y Mermas actualizados correctamente.");
+      }
+
+      await updateDoc(doc(db, "returns", id), { status: newStatus });
+    } catch (e) {
+      Alert.alert("Error", "No se pudo actualizar el estado: " + e.message);
+    }
   };
 
   return (
@@ -445,10 +475,6 @@ function ReturnsList({ statusFilter }) {
                   <MaterialCommunityIcons name="account" size={16} color="#666" style={{ marginRight: 5 }} />
                   <Text variant="bodySmall">{item.driver || '-'}</Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <MaterialCommunityIcons name="warehouse" size={16} color="#666" style={{ marginRight: 5 }} />
-                  <Text variant="bodySmall">{item.warehouse || '-'}</Text>
-                </View>
               </View>
 
               <View style={{ backgroundColor: '#f5f5f5', padding: 8, borderRadius: 5 }}>
@@ -461,7 +487,10 @@ function ReturnsList({ statusFilter }) {
               {item.evidence && (
                 <View style={{ marginTop: 10 }}>
                   <Text variant="bodySmall" style={{ fontWeight: 'bold', marginBottom: 5 }}>Evidencia</Text>
-                  <Image source={{ uri: `data:image/jpeg;base64,${item.evidence}` }} style={{ width: 60, height: 60, borderRadius: 5 }} />
+                  <Image
+                    source={{ uri: item.evidence && item.evidence.startsWith('http') ? item.evidence : `data:image/jpeg;base64,${item.evidence}` }}
+                    style={{ width: 60, height: 60, borderRadius: 5 }}
+                  />
                 </View>
               )}
             </Card.Content>
@@ -549,9 +578,9 @@ function ReturnsHistory() {
     fecha: 0.15,
     origen: 0.1,
     cliente: 0.25,
-    items: 0.1,
+    items: 0.25, // Increased width for items
     monto: 0.15,
-    estado: 0.15
+    estado: 0.15 // Reduced slightly if needed, or adjust total > 1 (flex works relatively)
   };
 
   return (
@@ -645,88 +674,97 @@ function ReturnsHistory() {
                 <Text style={{ fontSize: 12, color: '#999' }}>ID: {item.id.slice(-6)}</Text>
               </View>
               <Card.Content style={{ paddingTop: 10 }}>
-                <Text variant="titleMedium" style={{ fontWeight: 'bold' }}>{item.client || "Sin Cliente"}</Text>
-                <Text variant="bodySmall" style={{ color: '#555', marginBottom: 5 }}>{item.docType} {item.invoice}</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text variant="titleMedium" style={{ fontWeight: 'bold' }}>{item.client || "Sin Cliente"}</Text>
+                    <Text variant="bodySmall" style={{ color: '#555', marginBottom: 5 }}>{item.docType} {item.invoice}</Text>
+                  </View>
+                  <Chip
+                    style={{ backgroundColor: item.status === 'Aprobado' ? '#E8F5E9' : '#FFEBEE', height: 24 }}
+                    textStyle={{ color: item.status === 'Aprobado' ? '#2E7D32' : '#C62828', fontSize: 10, fontWeight: 'bold', lineHeight: 12 }}
+                  >
+                    {item.status?.toUpperCase()}
+                  </Chip>
+                </View>
 
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
-                  <View>
-                    <Text variant="bodySmall" style={{ color: '#999' }}>Items</Text>
-                    <Text variant="bodyMedium">{item.items?.length || 0}</Text>
-                  </View>
-                  <View>
-                    <Text variant="bodySmall" style={{ color: '#999' }}>Monto Est.</Text>
-                    <Text variant="bodyMedium">${(item.items?.reduce((sum, i) => sum + (i.quantity * (i.price || 0)), 0) || 0).toLocaleString()}</Text>
-                  </View>
-                  <View>
-                    <Text variant="bodySmall" style={{ color: '#999' }}>Motivo</Text>
-                    <Text variant="bodyMedium" numberOfLines={1} style={{ maxWidth: 100 }}>
-                      {item.items?.length > 1 ? "Varios" : (item.items?.[0]?.reason || "-")}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Chip
-                      style={{ backgroundColor: item.status === 'Aprobado' ? '#E8F5E9' : '#FFEBEE', height: 24 }}
-                      textStyle={{ color: item.status === 'Aprobado' ? '#2E7D32' : '#C62828', fontSize: 10, fontWeight: 'bold', lineHeight: 12 }}
-                    >
-                      {item.status?.toUpperCase()}
-                    </Chip>
-                  </View>
+                <Divider style={{ marginVertical: 10 }} />
+
+                <Text variant="bodySmall" style={{ fontWeight: 'bold', color: '#666', marginBottom: 5 }}>Productos Devueltos:</Text>
+                <View style={{ backgroundColor: '#FAFAFA', borderRadius: 8, padding: 8 }}>
+                  {item.items?.map((prod, idx) => (
+                    <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <Text style={{ fontSize: 13, flex: 1, fontWeight: '500' }}>{prod.productName}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <Text style={{ fontSize: 11, color: '#F36F21', fontWeight: 'bold' }}>x{prod.quantity}</Text>
+                        <Text style={{ fontSize: 10, color: '#999' }}>({prod.reason})</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 }}>
+                  <Text variant="bodySmall" style={{ color: '#999' }}>Monto Est.: </Text>
+                  <Text variant="bodySmall" style={{ fontWeight: 'bold' }}>
+                    ${(item.items?.reduce((sum, i) => sum + (i.quantity * (i.price || 0)), 0) || 0).toLocaleString()}
+                  </Text>
                 </View>
               </Card.Content>
             </Card>
           ))}
         </ScrollView>
       ) : (
-        // DESKTOP/TABLET TABLE VIEW
-        <View style={{ flex: 1, marginHorizontal: 10, marginBottom: 10, backgroundColor: 'white', borderRadius: 10, elevation: 2, overflow: 'hidden' }}>
+        // DESKTOP TABLE VIEW
+        <View style={styles.tableContainer}>
           {/* Header */}
-          <View style={{ flexDirection: 'row', padding: 12, borderBottomWidth: 1, borderBottomColor: '#EEE', backgroundColor: '#FAFAFA' }}>
-            <Text style={[styles.tableHeader, { flex: colWidths.id }]}>ID</Text>
-            <Text style={[styles.tableHeader, { flex: colWidths.fecha }]}>FECHA</Text>
-            <Text style={[styles.tableHeader, { flex: colWidths.origen }]}>ORIGEN</Text>
-            <Text style={[styles.tableHeader, { flex: colWidths.cliente }]}>CLIENTE / RUTA</Text>
-            <Text style={[styles.tableHeader, { flex: colWidths.items, textAlign: 'center' }]}>ITEMS</Text>
-            <Text style={[styles.tableHeader, { flex: colWidths.monto, textAlign: 'right' }]}>MONTO EST.</Text>
-            <Text style={[styles.tableHeader, { flex: colWidths.estado, textAlign: 'center' }]}>ESTADO</Text>
+          <View style={styles.tableHeader}>
+            <Text style={[styles.th, { flex: colWidths.id }]}>ID</Text>
+            <Text style={[styles.th, { flex: colWidths.fecha }]}>Fecha</Text>
+            <Text style={[styles.th, { flex: colWidths.origen }]}>Origen</Text>
+            <Text style={[styles.th, { flex: colWidths.cliente }]}>Cliente</Text>
+            <Text style={[styles.th, { flex: colWidths.items }]}>Items</Text>
+            <Text style={[styles.th, { flex: colWidths.monto }]}>Monto</Text>
+            <Text style={[styles.th, { flex: colWidths.estado }]}>Estado</Text>
           </View>
 
-          {/* List */}
+          {/* Rows */}
           <ScrollView>
-            {filtered.length === 0 ? (
-              <Text style={{ textAlign: 'center', padding: 20, color: '#999' }}>No se encontraron resultados.</Text>
-            ) : (
-              filtered.map((item, index) => (
-                <View key={item.id} style={{ flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#F5F5F5', alignItems: 'center' }}>
-                  <Text style={[styles.tableCell, { flex: colWidths.id, color: '#999', fontSize: 10 }]} numberOfLines={1}>{item.id.slice(-6)}</Text>
-                  <Text style={[styles.tableCell, { flex: colWidths.fecha }]}>{item.jsDate.toLocaleDateString()}</Text>
-                  <View style={[styles.tableCell, { flex: colWidths.origen, flexDirection: 'row', alignItems: 'center', gap: 5 }]}>
-                    <MaterialCommunityIcons name={(item.origin || 'Móvil') === 'Móvil' ? "cellphone" : "monitor"} size={16} color="#555" />
-                    <Text style={{ fontSize: 11, color: '#555' }}>{item.origin || 'Móvil'}</Text>
-                  </View>
-                  <View style={{ flex: colWidths.cliente }}>
-                    <Text style={{ fontWeight: 'bold', fontSize: 12, color: '#333' }} numberOfLines={1}>{item.client}</Text>
-                    <Text style={{ fontSize: 10, color: '#999' }} numberOfLines={1}>{item.route || 'Sin Ruta'}</Text>
-                  </View>
-                  <Text style={[styles.tableCell, { flex: colWidths.items, textAlign: 'center' }]}>{item.items?.length || 0}</Text>
-                  <Text style={[styles.tableCell, { flex: colWidths.monto, textAlign: 'right', color: '#555' }]}>
-                    ${(item.items?.reduce((sum, i) => sum + (i.quantity * (i.price || 0)), 0) || 0).toLocaleString()}
-                  </Text>
-                  <View style={{ flex: colWidths.estado, alignItems: 'center' }}>
-                    <Chip
-                      style={{ backgroundColor: item.status === 'Aprobado' ? '#E8F5E9' : '#FFEBEE', height: 24 }}
-                      textStyle={{ color: item.status === 'Aprobado' ? '#2E7D32' : '#C62828', fontSize: 9, fontWeight: 'bold', lineHeight: 10 }}
-                    >
-                      {item.status?.toUpperCase()}
-                    </Chip>
-                  </View>
+            {filtered.map((item) => (
+              <View key={item.id} style={styles.tableRow}>
+                <Text style={[styles.td, { flex: colWidths.id }]}>{item.id.slice(-6)}</Text>
+                <Text style={[styles.td, { flex: colWidths.fecha }]}>{item.jsDate.toLocaleDateString()}</Text>
+                <View style={[styles.td, { flex: colWidths.origen, flexDirection: 'row', alignItems: 'center', gap: 5 }]}>
+                  <MaterialCommunityIcons name={(item.origin || 'Móvil') === 'Móvil' ? "cellphone" : "monitor"} size={16} color="#666" />
+                  <Text>{item.origin || 'Móvil'}</Text>
                 </View>
-              ))
-            )}
+                <View style={[styles.td, { flex: colWidths.cliente }]}>
+                  <Text style={{ fontWeight: 'bold' }}>{item.client}</Text>
+                  <Text style={{ fontSize: 10, color: '#666' }}>{item.docType} {item.invoice}</Text>
+                </View>
+                <View style={[styles.td, { flex: colWidths.items }]}>
+                  {item.items?.map((prod, idx) => (
+                    <Text key={idx} style={{ fontSize: 11 }}>
+                      • {prod.productName} <Text style={{ fontWeight: 'bold', color: '#F36F21' }}>x{prod.quantity}</Text>
+                    </Text>
+                  ))}
+                </View>
+                <Text style={[styles.td, { flex: colWidths.monto }]}>
+                  ${(item.items?.reduce((sum, i) => sum + (i.quantity * (i.price || 0)), 0) || 0).toLocaleString()}
+                </Text>
+                <View style={[styles.td, { flex: colWidths.estado }]}>
+                  <Chip
+                    style={{ backgroundColor: item.status === 'Aprobado' ? '#E8F5E9' : '#FFEBEE', height: 24 }}
+                    textStyle={{ color: item.status === 'Aprobado' ? '#2E7D32' : '#C62828', fontSize: 10, fontWeight: 'bold', lineHeight: 12 }}
+                  >
+                    {item.status?.toUpperCase()}
+                  </Chip>
+                </View>
+              </View>
+            ))}
           </ScrollView>
         </View>
       )}
 
-      {/* Modals */}
+      {/* MODALS */}
       <SelectionModal
         visible={showOriginModal}
         hide={() => setShowOriginModal(false)}
@@ -746,86 +784,66 @@ function ReturnsHistory() {
   );
 }
 
-const TopTab = createMaterialTopTabNavigator();
 export default function ReturnsScreen() {
+  const [tab, setTab] = useState('new'); // 'new', 'list', 'history'
+
   return (
-    <TopTab.Navigator screenOptions={{ tabBarLabelStyle: { fontSize: 11, fontWeight: 'bold' }, tabBarIndicatorStyle: { backgroundColor: '#F36F21' } }}>
-      <TopTab.Screen name="Nueva" component={NewReturnForm} />
-      <TopTab.Screen name="Por Aprobar">
-        {() => <ReturnsList statusFilter="Pendiente" />}
-      </TopTab.Screen>
-      <TopTab.Screen name="Historial" component={ReturnsHistory} />
-    </TopTab.Navigator>
+    <View style={styles.container}>
+      <View style={styles.tabBar}>
+        <TouchableOpacity onPress={() => setTab('new')} style={[styles.tabItem, tab === 'new' && styles.activeTab]}>
+          <MaterialCommunityIcons name="plus-box" size={24} color={tab === 'new' ? '#F36F21' : '#666'} />
+          <Text style={[styles.tabText, tab === 'new' && styles.activeTabText]}>Nueva</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setTab('list')} style={[styles.tabItem, tab === 'list' && styles.activeTab]}>
+          <MaterialCommunityIcons name="clipboard-check" size={24} color={tab === 'list' ? '#F36F21' : '#666'} />
+          <Text style={[styles.tabText, tab === 'list' && styles.activeTabText]}>Por Aprobar</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setTab('history')} style={[styles.tabItem, tab === 'history' && styles.activeTab]}>
+          <MaterialCommunityIcons name="history" size={24} color={tab === 'history' ? '#F36F21' : '#666'} />
+          <Text style={[styles.tabText, tab === 'history' && styles.activeTabText]}>Historial</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.content}>
+        {tab === 'new' && <NewReturnForm onReturnCreated={() => setTab('list')} />}
+        {tab === 'list' && <ReturnsList statusFilter="Pendiente" />}
+        {tab === 'history' && <ReturnsHistory />}
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContainer: { padding: 20, backgroundColor: '#fff', flexGrow: 1 },
-  listContainer: { flex: 1, padding: 10 },
-  input: { marginBottom: 12, backgroundColor: 'white' },
-  card: { marginBottom: 10, backgroundColor: 'white' },
-  modal: { backgroundColor: 'white', padding: 20, margin: 20, borderRadius: 10 },
+  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  tabBar: { flexDirection: 'row', backgroundColor: 'white', elevation: 2 },
+  tabItem: { flex: 1, alignItems: 'center', padding: 15, borderBottomWidth: 3, borderBottomColor: 'transparent' },
+  activeTab: { borderBottomColor: '#F36F21' },
+  tabText: { marginTop: 5, color: '#666', fontSize: 12 },
+  activeTabText: { color: '#F36F21', fontWeight: 'bold' },
+  content: { flex: 1 },
+  input: { marginBottom: 10, backgroundColor: 'white' },
   label: { marginBottom: 5, fontWeight: 'bold', color: '#555' },
-  filterContainer: {
-    padding: 15,
-    backgroundColor: 'white',
-    borderRadius: 10,
-    margin: 10,
-    elevation: 2
-  },
-  filterContainerMobile: {
-    padding: 10,
-    gap: 10
-  },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 10
-  },
-  filterRowMobile: {
-    flexDirection: 'column',
-    gap: 10,
-    marginBottom: 0
-  },
-  filterDropdown: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 8,
-    height: 40,
-    paddingHorizontal: 10
-  },
-  tableHeader: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#999'
-  },
-  tableCell: {
-    fontSize: 11,
-    color: '#555'
-  },
+  listContainer: { padding: 10 },
+  card: { marginBottom: 10, backgroundColor: 'white', elevation: 2 },
+  modal: { backgroundColor: 'white', padding: 20, margin: 20, borderRadius: 10 },
+  filterContainer: { padding: 10, backgroundColor: 'white', elevation: 1 },
+  filterContainerMobile: { flexDirection: 'column' },
+  filterRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
   mobileFilterInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 8,
-    height: 40,
-    paddingHorizontal: 10,
-    backgroundColor: 'white',
-    width: '100%'
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#F5F5F5', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#E0E0E0'
   },
   desktopFilterInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 8,
-    height: 40,
-    paddingHorizontal: 10
-  }
+    flexDirection: 'row', alignItems: 'center', backgroundColor: 'white',
+    borderWidth: 1, borderColor: '#ccc', borderRadius: 5, paddingHorizontal: 10, height: 40
+  },
+  filterDropdown: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: 'white', borderWidth: 1, borderColor: '#ccc', borderRadius: 5, paddingHorizontal: 10, height: 40
+  },
+  tableContainer: { flex: 1, padding: 20 },
+  tableHeader: { flexDirection: 'row', backgroundColor: '#eee', padding: 10, borderRadius: 5, marginBottom: 5 },
+  th: { fontWeight: 'bold', color: '#333' },
+  tableRow: { flexDirection: 'row', backgroundColor: 'white', padding: 10, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
+  td: { color: '#555', paddingRight: 10 },
 });
