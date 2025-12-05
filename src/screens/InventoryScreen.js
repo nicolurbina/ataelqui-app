@@ -41,7 +41,8 @@ const SelectionModal = ({ visible, hide, title, items, onSelect, renderItem }) =
 };
 
 // --- MODAL 1: EDITAR PRODUCTO ---
-const EditProductModal = ({ visible, hide, product }) => {
+// --- MODAL 1: EDITAR PRODUCTO ---
+const EditProductModal = ({ visible, hide, product, providers }) => {
   const [sku, setSku] = useState('');
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
@@ -52,9 +53,14 @@ const EditProductModal = ({ visible, hide, product }) => {
 
   const [stock, setStock] = useState('');
   const [minStock, setMinStock] = useState('');
+  const [unitType, setUnitType] = useState('Unidad');
+  const [numBoxes, setNumBoxes] = useState('');
+  const [unitsPerBox, setUnitsPerBox] = useState('');
   const [loading, setLoading] = useState(false);
   const [showCatMenu, setShowCatMenu] = useState(false);
   const CATEGORIES = ["Insumos", "Grasas", "Repostería", "Lácteos", "Harinas", "Otros"];
+
+  const [showProviderMenu, setShowProviderMenu] = useState(false);
 
   useEffect(() => {
     if (product) {
@@ -65,22 +71,37 @@ const EditProductModal = ({ visible, hide, product }) => {
       setLocation(product.location || product.aisle || '');
       setStock(String(product.stock || product.quantity || ''));
       setMinStock(String(product.minStock || '10'));
+      setUnitType(product.unitType || 'Unidad');
+      setNumBoxes(String(product.numBoxes || ''));
+      setUnitsPerBox(String(product.unitsPerBox || ''));
     }
   }, [product]);
 
   const handleUpdate = async () => {
     setLoading(true);
+
+    let finalStock = 0;
+    if (unitType === 'Unidad') {
+      finalStock = parseInt(stock) || 0;
+    } else {
+      finalStock = (parseInt(numBoxes) || 0) * (parseInt(unitsPerBox) || 0);
+    }
+
     try {
       const productRef = doc(db, "products", product.id);
       await updateDoc(productRef, {
         sku, name, category, provider,
         location, aisle: location,
-        stock: parseInt(stock), quantity: parseInt(stock),
-        minStock: parseInt(minStock),
+        unitType,
+        stock: finalStock,
+        quantity: finalStock,
+        minStock: parseInt(minStock) || 0,
+        numBoxes: unitType === 'Caja' ? (parseInt(numBoxes) || 0) : 0,
+        unitsPerBox: unitType === 'Caja' ? (parseInt(unitsPerBox) || 0) : 0,
         updatedAt: new Date()
       });
       hide();
-      Alert.alert("Ã‰xito", "Producto actualizado.");
+      Alert.alert("Éxito", "Producto actualizado.");
     } catch (e) { Alert.alert("Error", e.message); } finally { setLoading(false); }
   };
 
@@ -97,7 +118,7 @@ const EditProductModal = ({ visible, hide, product }) => {
             <TextInput value={sku} onChangeText={setSku} mode="outlined" style={styles.input} dense />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.label}>CategorÃ­a</Text>
+            <Text style={styles.label}>Categoría</Text>
             <Menu
               visible={showCatMenu}
               onDismiss={() => setShowCatMenu(false)}
@@ -116,7 +137,16 @@ const EditProductModal = ({ visible, hide, product }) => {
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>Proveedor</Text>
-            <TextInput value={provider} onChangeText={setProvider} mode="outlined" style={styles.input} dense />
+            <TouchableOpacity onPress={() => setShowProviderMenu(true)}>
+              <TextInput value={provider} mode="outlined" editable={false} right={<TextInput.Icon icon="chevron-down" />} style={styles.input} dense />
+            </TouchableOpacity>
+            <SelectionModal
+              visible={showProviderMenu}
+              hide={() => setShowProviderMenu(false)}
+              title="Seleccionar Proveedor"
+              items={providers || []}
+              onSelect={setProvider}
+            />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>Bodega</Text>
@@ -134,16 +164,50 @@ const EditProductModal = ({ visible, hide, product }) => {
           </View>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Stock Actual</Text>
-            <TextInput value={stock} onChangeText={setStock} keyboardType="numeric" mode="outlined" style={styles.input} dense />
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, marginTop: 5 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 20 }}>
+            <RadioButton value="Unidad" status={unitType === 'Unidad' ? 'checked' : 'unchecked'} onPress={() => setUnitType('Unidad')} color="#F36F21" />
+            <Text onPress={() => setUnitType('Unidad')}>Unidad</Text>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.label}>MÃ­nimo</Text>
-            <TextInput value={minStock} onChangeText={setMinStock} keyboardType="numeric" mode="outlined" style={styles.input} dense />
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <RadioButton value="Caja" status={unitType === 'Caja' ? 'checked' : 'unchecked'} onPress={() => setUnitType('Caja')} color="#F36F21" />
+            <Text onPress={() => setUnitType('Caja')}>Caja</Text>
           </View>
         </View>
+
+        {unitType === 'Unidad' ? (
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Stock Actual</Text>
+              <TextInput value={stock} onChangeText={setStock} keyboardType="numeric" mode="outlined" style={styles.input} dense />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Mínimo</Text>
+              <TextInput value={minStock} onChangeText={setMinStock} keyboardType="numeric" mode="outlined" style={styles.input} dense />
+            </View>
+          </View>
+        ) : (
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>N° Cajas</Text>
+              <TextInput value={numBoxes} onChangeText={setNumBoxes} keyboardType="numeric" mode="outlined" placeholder="0" style={styles.input} dense />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Unid/Caja</Text>
+              <TextInput value={unitsPerBox} onChangeText={setUnitsPerBox} keyboardType="numeric" mode="outlined" placeholder="0" style={styles.input} dense />
+            </View>
+          </View>
+        )}
+
+        {unitType === 'Caja' && (
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Mínimo</Text>
+              <TextInput value={minStock} onChangeText={setMinStock} keyboardType="numeric" mode="outlined" style={styles.input} dense />
+            </View>
+          </View>
+        )}
+
         <Button mode="contained" onPress={handleUpdate} loading={loading} buttonColor="#F36F21" style={{ marginTop: 20 }}>Actualizar</Button>
       </Modal>
     </Portal>
@@ -151,44 +215,158 @@ const EditProductModal = ({ visible, hide, product }) => {
 };
 
 // --- MODAL 2: REPORTAR MERMA ---
-const ReportWasteModal = ({ visible, hide, product }) => {
+const ReportWasteModal = ({ visible, hide, product, products }) => {
   const [qty, setQty] = useState('');
   const [cause, setCause] = useState('Vencido');
   const [loading, setLoading] = useState(false);
 
+  // Nuevos campos
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [batch, setBatch] = useState('');
+  const [unitCost, setUnitCost] = useState('');
+  const [showCauseMenu, setShowCauseMenu] = useState(false);
+
+  const CAUSES = ["Vencido", "Daño", "Robo", "Consumo Interno", "Otro"];
+
+  useEffect(() => {
+    if (product) {
+      setSelectedProduct(product);
+      setSearchQuery(product.name || '');
+    } else {
+      setSelectedProduct(null);
+      setSearchQuery('');
+    }
+    setQty('');
+    setBatch('');
+    setUnitCost('');
+    setCause('Vencido');
+  }, [product, visible]);
+
+  const handleSelectProduct = (p) => {
+    setSelectedProduct(p);
+    setSearchQuery(p.name);
+    setShowSuggestions(false);
+  };
+
   const handleConfirmWaste = async () => {
+    if (!selectedProduct) return Alert.alert("Error", "Selecciona un producto.");
     if (!qty) return Alert.alert("Error", "Ingresa la cantidad.");
+
     setLoading(true);
     try {
       const deduction = parseInt(qty);
-      const currentStock = product.stock || product.quantity || 0;
+      const currentStock = selectedProduct.stock || selectedProduct.quantity || 0;
+
       if (currentStock < deduction) {
         setLoading(false);
         return Alert.alert("Error", "Stock insuficiente.");
       }
+
       const newStock = currentStock - deduction;
-      await updateDoc(doc(db, "products", product.id), { stock: newStock, quantity: newStock });
-      await addDoc(collection(db, "waste"), { sku: product.sku, productName: product.name, quantity: deduction, cause, date: new Date() });
-      await addDoc(collection(db, "kardex"), { sku: product.sku, productName: product.name, type: "Salida", quantity: deduction, reason: `Merma (${cause})`, date: new Date(), user: "Bodeguero" });
+
+      // Actualizar producto
+      await updateDoc(doc(db, "products", selectedProduct.id), { stock: newStock, quantity: newStock });
+
+      // Registrar en Waste
+      await addDoc(collection(db, "waste"), {
+        sku: selectedProduct.sku,
+        productName: selectedProduct.name,
+        quantity: deduction,
+        cause,
+        batch,
+        unitCost: parseFloat(unitCost) || 0,
+        date: new Date()
+      });
+
+      // Registrar en Kardex
+      await addDoc(collection(db, "kardex"), {
+        sku: selectedProduct.sku,
+        productName: selectedProduct.name,
+        type: "Salida",
+        quantity: deduction,
+        reason: `Merma (${cause})`,
+        date: new Date(),
+        user: "Bodeguero"
+      });
+
       Alert.alert("Listo", `Descontadas ${deduction} un.`);
-      setQty(''); hide();
+      hide();
     } catch (e) { Alert.alert("Error", e.message); } finally { setLoading(false); }
   };
+
+  const filteredProducts = products ? products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.includes(searchQuery)) : [];
 
   return (
     <Portal>
       <Modal visible={visible} onDismiss={hide} contentContainerStyle={styles.modal}>
-        <Text variant="headlineSmall" style={{ marginBottom: 10, color: '#D32F2F', fontWeight: 'bold' }}>Registrar Merma</Text>
-        <Text style={{ marginBottom: 15 }}>{product?.name}</Text>
-        <TextInput label="Cantidad" value={qty} onChangeText={setQty} keyboardType="numeric" mode="outlined" style={styles.input} />
-        <RadioButton.Group onValueChange={setCause} value={cause}>
-          <View style={{ flexDirection: 'row', marginBottom: 15 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 15 }}><RadioButton value="Vencido" /><Text>Vencido</Text></View>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}><RadioButton value="DaÃ±o" /><Text>DaÃ±o</Text></View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+          <Text variant="headlineSmall" style={{ fontWeight: 'bold', color: '#333' }}>Registrar Nueva Merma</Text>
+          <IconButton icon="close" size={24} onPress={hide} />
+        </View>
+
+        <Text style={styles.label}>Producto (Nombre o SKU)</Text>
+        <View>
+          <TextInput
+            placeholder="Buscar por SKU o Nombre..."
+            value={searchQuery}
+            onChangeText={(t) => { setSearchQuery(t); setShowSuggestions(true); }}
+            mode="outlined"
+            style={styles.input}
+            dense
+            right={<TextInput.Icon icon="magnify" />}
+          />
+          {showSuggestions && searchQuery.length > 0 && (
+            <View style={{ maxHeight: 150, backgroundColor: '#f9f9f9', borderWidth: 1, borderColor: '#eee', borderRadius: 5 }}>
+              <ScrollView nestedScrollEnabled>
+                {filteredProducts.map(p => (
+                  <TouchableOpacity key={p.id} onPress={() => handleSelectProduct(p)} style={{ padding: 10, borderBottomWidth: 1, borderBottomColor: '#eee' }}>
+                    <Text style={{ fontWeight: 'bold' }}>{p.name}</Text>
+                    <Text variant="bodySmall">{p.sku}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.label}>Lote</Text>
+            <TextInput value={batch} onChangeText={setBatch} mode="outlined" placeholder="L-2023-X" style={styles.input} dense />
           </View>
-        </RadioButton.Group>
-        <Button mode="contained" onPress={handleConfirmWaste} loading={loading} buttonColor="#D32F2F">Confirmar</Button>
-        <Button mode="text" onPress={hide} style={{ marginTop: 5 }}>Cancelar</Button>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.label}>Cantidad</Text>
+            <TextInput value={qty} onChangeText={setQty} keyboardType="numeric" mode="outlined" placeholder="0" style={styles.input} dense />
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.label}>Causa</Text>
+            <Menu
+              visible={showCauseMenu}
+              onDismiss={() => setShowCauseMenu(false)}
+              anchor={
+                <TouchableOpacity onPress={() => setShowCauseMenu(true)}>
+                  <TextInput value={cause} mode="outlined" editable={false} right={<TextInput.Icon icon="chevron-down" />} style={styles.input} dense />
+                </TouchableOpacity>
+              }
+            >
+              {CAUSES.map(c => <Menu.Item key={c} onPress={() => { setCause(c); setShowCauseMenu(false); }} title={c} />)}
+            </Menu>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.label}>Costo Unitario</Text>
+            <TextInput value={unitCost} onChangeText={setUnitCost} keyboardType="numeric" mode="outlined" placeholder="0" style={styles.input} dense />
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+          <Button mode="outlined" onPress={hide} textColor="#666" style={{ borderColor: '#ccc' }}>Cancelar</Button>
+          <Button mode="contained" onPress={handleConfirmWaste} loading={loading} buttonColor="#D32F2F">Registrar Pérdida</Button>
+        </View>
       </Modal>
     </Portal>
   );
@@ -204,6 +382,11 @@ const CountDetailModal = ({ visible, hide, count }) => {
   const [items, setItems] = useState([]);
   const [currentItem, setCurrentItem] = useState(null);
   const [countedQty, setCountedQty] = useState('');
+
+  // Box Option State
+  const [countFormat, setCountFormat] = useState('Unidad');
+  const [boxCount, setBoxCount] = useState('');
+  const [unitsPerBox, setUnitsPerBox] = useState('');
 
   // Manual Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -224,6 +407,9 @@ const CountDetailModal = ({ visible, hide, count }) => {
     setStep('SUMMARY');
     setCurrentItem(null);
     setCountedQty('');
+    setCountFormat('Unidad');
+    setBoxCount('');
+    setUnitsPerBox('');
     setSearchQuery('');
     setShowManualSearch(false);
   };
@@ -247,13 +433,31 @@ const CountDetailModal = ({ visible, hide, count }) => {
   };
 
   const handleConfirmCount = () => {
-    const val = parseInt(countedQty);
-    if (isNaN(val)) return Alert.alert("Error", "Ingresa un nÃºmero vÃ¡lido");
+    let val = 0;
+    if (countFormat === 'Unidad') {
+      val = parseInt(countedQty);
+    } else {
+      val = (parseInt(boxCount) || 0) * (parseInt(unitsPerBox) || 0);
+    }
+
+    if (isNaN(val)) return Alert.alert("Error", "Ingresa un número válido");
+
+    // Si es caja, actualizamos countedQty con el total calculado para que se guarde correctamente
+    setCountedQty(String(val));
     setStep('RESULT');
   };
 
   const handleSaveAndNext = async () => {
-    const val = parseInt(countedQty);
+    // DEBUG: Check values
+    Alert.alert("Debug Start", `Fmt: ${countFormat}, Qty: ${countedQty}, Box: ${boxCount}, Exp: ${currentItem?.expected}`);
+
+    let val = 0;
+    if (countFormat === 'Unidad') {
+      val = parseInt(countedQty);
+    } else {
+      val = (parseInt(boxCount) || 0) * (parseInt(unitsPerBox) || 0);
+    }
+
     const updatedItems = items.map(i =>
       i.sku === currentItem.sku ? { ...i, counted: val } : i
     );
@@ -266,11 +470,41 @@ const CountDetailModal = ({ visible, hide, count }) => {
         counted: totalCounted,
         status: 'Pendiente'
       });
+
+      // Trigger Alert if Discrepancy
+      const currentVal = isNaN(val) ? 0 : val;
+      const diff = currentVal - (currentItem.expected || 0);
+
+      // DEBUG: Diagnose why alert is not appearing
+      if (diff !== 0) {
+        Alert.alert("Debug", `Detectada diferencia: ${diff}. Guardando alerta...`);
+      } else {
+        // Alert.alert("Debug", "No hay diferencia (Diff = 0)");
+      }
+
+      if (diff !== 0) {
+        await addDoc(collection(db, "general_alerts"), {
+          title: `Discrepancia en ${currentItem.name}`,
+          desc: `El conteo físico no coincide con el sistema.`,
+          type: 'Discrepancia',
+          color: '#4527A0',
+          icon: 'file-document-outline',
+          date: new Date(),
+          expected: parseInt(currentItem.expected) || 0,
+          counted: parseInt(currentVal) || 0,
+          isSystem: true
+        });
+      }
+
       setItems(updatedItems);
       // Return to SUMMARY instead of SCAN loop, as per user preference for list selection
       setStep('SUMMARY');
       setCurrentItem(null);
       setCountedQty('');
+      setBoxCount('');
+      setUnitsPerBox('');
+      setCountFormat('Unidad');
+
     } catch (e) {
       Alert.alert("Error", "No se pudo guardar: " + e.message);
     }
@@ -291,7 +525,7 @@ const CountDetailModal = ({ visible, hide, count }) => {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
             <View>
               <Text variant="titleLarge" style={{ fontWeight: 'bold' }}>{count.countId}</Text>
-              <Text variant="bodyMedium" style={{ color: '#666' }}>{count.worker} â€¢ {count.aisle}</Text>
+              <Text variant="bodyMedium" style={{ color: '#666' }}>{count.worker} • {count.aisle}</Text>
             </View>
             <IconButton icon="close" size={24} onPress={hide} />
           </View>
@@ -398,16 +632,48 @@ const CountDetailModal = ({ visible, hide, count }) => {
           <Text variant="titleMedium" style={{ marginBottom: 5 }}>{currentItem.name}</Text>
           <Chip icon="barcode" style={{ alignSelf: 'flex-start', marginBottom: 20 }}>{currentItem.sku}</Chip>
 
-          <TextInput
-            label="Cantidad Contada"
-            value={countedQty}
-            onChangeText={setCountedQty}
-            keyboardType="numeric"
-            mode="outlined"
-            style={{ backgroundColor: 'white', fontSize: 24, marginBottom: 20 }}
-            contentStyle={{ fontSize: 24, fontWeight: 'bold' }}
-            autoFocus
-          />
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 20 }}>
+              <RadioButton value="Unidad" status={countFormat === 'Unidad' ? 'checked' : 'unchecked'} onPress={() => setCountFormat('Unidad')} color="#F36F21" />
+              <Text onPress={() => setCountFormat('Unidad')}>Unidad</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <RadioButton value="Caja" status={countFormat === 'Caja' ? 'checked' : 'unchecked'} onPress={() => setCountFormat('Caja')} color="#F36F21" />
+              <Text onPress={() => setCountFormat('Caja')}>Caja</Text>
+            </View>
+          </View>
+
+          {countFormat === 'Unidad' ? (
+            <TextInput
+              label="Cantidad Contada"
+              value={countedQty}
+              onChangeText={setCountedQty}
+              keyboardType="numeric"
+              mode="outlined"
+              style={{ backgroundColor: 'white', fontSize: 24, marginBottom: 20 }}
+              contentStyle={{ fontSize: 24, fontWeight: 'bold' }}
+              autoFocus
+            />
+          ) : (
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+              <TextInput
+                label="N° Cajas"
+                value={boxCount}
+                onChangeText={setBoxCount}
+                keyboardType="numeric"
+                mode="outlined"
+                style={{ flex: 1, backgroundColor: 'white' }}
+              />
+              <TextInput
+                label="Unid/Caja"
+                value={unitsPerBox}
+                onChangeText={setUnitsPerBox}
+                keyboardType="numeric"
+                mode="outlined"
+                style={{ flex: 1, backgroundColor: 'white' }}
+              />
+            </View>
+          )}
 
           <Button mode="contained" onPress={handleConfirmCount} buttonColor="#F36F21" contentStyle={{ height: 50 }}>
             Confirmar
@@ -580,7 +846,8 @@ const CreateCountModal = ({ visible, hide }) => {
         date: new Date(),
         expected: expectedTotal,
         counted: countedTotal,
-        items: itemsSnapshot
+        items: itemsSnapshot,
+        origin: 'Móvil'
       });
 
       // Instead of Alert, show Result Screen
@@ -630,7 +897,24 @@ const CreateCountModal = ({ visible, hide }) => {
             </View>
           )}
 
-          <Button mode="contained" onPress={resetForm} buttonColor="#F36F21" contentStyle={{ height: 50 }} style={{ marginBottom: 10 }}>
+          <Button mode="contained" onPress={async () => {
+            // Check for discrepancy and alert
+            const diff = resultData.counted - resultData.expected;
+            if (diff !== 0) {
+              await addDoc(collection(db, "general_alerts"), {
+                title: `Discrepancia en Conteo ${resultData.countId}`,
+                desc: `El conteo físico no coincide con el sistema.`,
+                type: 'Discrepancia',
+                color: '#4527A0',
+                icon: 'file-document-outline',
+                date: new Date(),
+                expected: parseInt(resultData.expected) || 0,
+                counted: parseInt(resultData.counted) || 0,
+                isSystem: true
+              });
+            }
+            resetForm();
+          }} buttonColor="#F36F21" contentStyle={{ height: 50 }} style={{ marginBottom: 10 }}>
             Guardar
           </Button>
 
@@ -776,7 +1060,7 @@ const SimpleScannerModal = ({ visible, hide, onScan }) => {
 };
 
 // --- MODAL 5: AGREGAR PRODUCTO ---
-const AddProductModal = ({ visible, hide }) => {
+const AddProductModal = ({ visible, hide, providers }) => {
   const [sku, setSku] = useState('');
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
@@ -792,9 +1076,13 @@ const AddProductModal = ({ visible, hide }) => {
 
   const [showCatMenu, setShowCatMenu] = useState(false);
   const [showLocMenu, setShowLocMenu] = useState(false);
+  const [showProviderMenu, setShowProviderMenu] = useState(false);
 
   const CATEGORIES = ["Insumos", "Grasas", "Repostería", "Lácteos", "Harinas", "Otros"];
   const WAREHOUSES = ["Bodega 1", "Bodega 2", "Bodega 3", "Bodega 4", "Bodega 5", "Cámara de Frío"];
+
+  const [expiryDate, setExpiryDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const handleSave = async () => {
     if (!sku || !name || !category || !location) {
@@ -827,13 +1115,53 @@ const AddProductModal = ({ visible, hide }) => {
         // Guardamos detalles adicionales si es caja
         numBoxes: unitType === 'Caja' ? (parseInt(numBoxes) || 0) : 0,
         unitsPerBox: unitType === 'Caja' ? (parseInt(unitsPerBox) || 0) : 0,
+        expiryDate: expiryDate, // Save Date object or Timestamp
         createdAt: new Date(),
         updatedAt: new Date()
       });
 
+      // GENERATE PERSISTENT ALERTS
+      const today = new Date();
+      // 1. Stock
+      if (finalStock <= (parseInt(minStock) || 10)) {
+        await addDoc(collection(db, "general_alerts"), {
+          title: 'Stock Crítico',
+          desc: `Quedan solo ${finalStock} unidades de ${name}.`,
+          type: 'Stock',
+          color: '#FBC02D',
+          icon: 'package-variant',
+          date: new Date(),
+          isSystem: true
+        });
+      }
+      // 2. Expiry
+      const diffDays = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) {
+        await addDoc(collection(db, "general_alerts"), {
+          title: 'Producto Vencido',
+          desc: `${name} venció hace ${Math.abs(diffDays)} días.`,
+          type: 'FEFO',
+          color: '#D32F2F',
+          icon: 'calendar-clock',
+          date: new Date(),
+          isSystem: true
+        });
+      } else if (diffDays <= 7) {
+        await addDoc(collection(db, "general_alerts"), {
+          title: 'Riesgo Vencimiento',
+          desc: `${name} vence en ${diffDays} días.`,
+          type: 'FEFO',
+          color: '#F57C00',
+          icon: 'calendar-clock',
+          date: new Date(),
+          isSystem: true
+        });
+      }
+
       Alert.alert("Éxito", "Producto agregado correctamente.");
       setSku(''); setName(''); setCategory(''); setProvider(''); setLocation('');
       setStock(''); setMinStock(''); setUnitType('Unidad'); setNumBoxes(''); setUnitsPerBox('');
+      setExpiryDate(new Date());
       hide();
     } catch (e) {
       Alert.alert("Error", e.message);
@@ -878,7 +1206,16 @@ const AddProductModal = ({ visible, hide }) => {
           <TextInput value={name} onChangeText={setName} mode="outlined" placeholder="Ej: Harina Selecta 25kg" style={styles.input} dense />
 
           <Text style={styles.label}>Proveedor</Text>
-          <TextInput value={provider} onChangeText={setProvider} mode="outlined" placeholder="Ej: Molino A" style={styles.input} dense />
+          <TouchableOpacity onPress={() => setShowProviderMenu(true)}>
+            <TextInput value={provider} mode="outlined" placeholder="Seleccionar" editable={false} right={<TextInput.Icon icon="chevron-down" />} style={styles.input} dense />
+          </TouchableOpacity>
+          <SelectionModal
+            visible={showProviderMenu}
+            hide={() => setShowProviderMenu(false)}
+            title="Seleccionar Proveedor"
+            items={providers || []}
+            onSelect={setProvider}
+          />
 
           <Text style={styles.label}>Bodega</Text>
           <TouchableOpacity onPress={() => setShowLocMenu(true)}>
@@ -921,6 +1258,29 @@ const AddProductModal = ({ visible, hide }) => {
             </View>
           )}
 
+          <TouchableOpacity onPress={() => setShowDatePicker(true)} style={{ marginTop: 10, marginBottom: 10 }}>
+            <TextInput
+              label="Fecha Vencimiento"
+              value={expiryDate.toLocaleDateString()}
+              editable={false}
+              mode="outlined"
+              right={<TextInput.Icon icon="calendar" />}
+              style={styles.input}
+              dense
+            />
+          </TouchableOpacity>
+          {showDatePicker && (
+            <DateTimePicker
+              value={expiryDate}
+              mode="date"
+              display="default"
+              onChange={(event, selectedDate) => {
+                setShowDatePicker(false);
+                if (selectedDate) setExpiryDate(selectedDate);
+              }}
+            />
+          )}
+
           <Text style={styles.label}>Stock Mínimo</Text>
           <TextInput value={minStock} onChangeText={setMinStock} keyboardType="numeric" mode="outlined" placeholder="0" style={styles.input} dense />
 
@@ -947,9 +1307,12 @@ function StockList() {
   const [addProductModalVisible, setAddProductModalVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
 
+  const [providers, setProviders] = useState([]);
+
   useEffect(() => {
     const u = onSnapshot(query(collection(db, "products"), orderBy("createdAt", "desc")), (s) => setProducts(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    return () => u();
+    const u2 = onSnapshot(collection(db, "providers"), (s) => setProviders(s.docs.map(d => d.data().name)));
+    return () => { u(); u2(); };
   }, []);
 
   const openEdit = (p) => { setSelectedProduct(p); setEditModalVisible(true); };
@@ -1008,9 +1371,9 @@ function StockList() {
         {filteredProducts.length === 0 && <Text style={{ textAlign: 'center', marginTop: 20, color: '#999' }}>No se encontraron productos.</Text>}
       </ScrollView>
       <FAB icon="plus" label="Nuevo" style={styles.fab} onPress={() => setAddProductModalVisible(true)} color="white" />
-      <EditProductModal visible={editModalVisible} hide={() => setEditModalVisible(false)} product={selectedProduct} />
-      <ReportWasteModal visible={wasteModalVisible} hide={() => setWasteModalVisible(false)} product={selectedProduct} />
-      <AddProductModal visible={addProductModalVisible} hide={() => setAddProductModalVisible(false)} />
+      <EditProductModal visible={editModalVisible} hide={() => setEditModalVisible(false)} product={selectedProduct} providers={providers} />
+      <ReportWasteModal visible={wasteModalVisible} hide={() => setWasteModalVisible(false)} product={selectedProduct} products={products} />
+      <AddProductModal visible={addProductModalVisible} hide={() => setAddProductModalVisible(false)} providers={providers} />
     </View>
   );
 }
@@ -1130,6 +1493,7 @@ function CountHistoryList() {
                 <Text variant="bodySmall">Fecha: {formatDate(c.date)}</Text>
                 <Text variant="bodySmall">Bodeguero: {c.worker}</Text>
                 <Text variant="bodySmall">Bodega: {c.aisle}</Text>
+                <Text variant="bodySmall">Origen: {c.origin || 'Web'}</Text>
               </View>
               <View style={{ backgroundColor: '#f9f9f9', padding: 10, borderRadius: 8, flexDirection: 'row', justifyContent: 'space-around' }}>
                 <View style={{ alignItems: 'center' }}><Text variant="labelSmall">Esperado</Text><Text variant="titleMedium" style={{ fontWeight: 'bold' }}>{c.expected}</Text></View>

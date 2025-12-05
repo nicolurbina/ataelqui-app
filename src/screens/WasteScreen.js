@@ -79,6 +79,17 @@ export default function WasteScreen() {
       // 4. Registrar Kardex
       await addDoc(collection(db, "kardex"), { sku, productName: pDoc.data().name, type: "Salida", quantity: deduction, reason: `Merma (${cause})`, date: new Date(), user: "Bodeguero" });
 
+      // 5. Trigger Alert for Waste
+      await addDoc(collection(db, "general_alerts"), {
+        title: 'Merma Registrada',
+        desc: `Producto: ${pDoc.data().name}. Cantidad: ${deduction}. Causa: ${cause}.`,
+        type: 'Merma',
+        color: '#795548',
+        icon: 'trash-can',
+        date: new Date().toISOString().split('T')[0],
+        isSystem: true
+      });
+
       Alert.alert("Baja Exitosa", "Inventario actualizado.");
       setModalVisible(false);
     } catch (e) {
@@ -92,23 +103,23 @@ export default function WasteScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={{padding: 15, backgroundColor:'white'}}>
-          <SegmentedButtons value={filter} onValueChange={setFilter} buttons={[{ value: 'all', label: 'Todas' }, { value: 'vencido', label: 'Vencido' }, { value: 'daño', label: 'Daño' }]} />
+      <View style={{ padding: 15, backgroundColor: 'white' }}>
+        <SegmentedButtons value={filter} onValueChange={setFilter} buttons={[{ value: 'all', label: 'Todas' }, { value: 'vencido', label: 'Vencido' }, { value: 'daño', label: 'Daño' }]} />
       </View>
 
-      <ScrollView style={{padding:10}}>
-          {filteredList.map((item) => (
-            <Card key={item.id} style={styles.card}>
-                <Card.Content>
-                    <View style={{flexDirection:'row', justifyContent:'space-between'}}>
-                        <Text style={{fontWeight:'bold'}}>{item.productName}</Text>
-                        <Text style={{color:'#D32F2F', fontWeight:'bold'}}>-{item.quantity}</Text>
-                    </View>
-                    <Text variant="bodySmall">SKU: {item.sku} | {item.cause}</Text>
-                    <Text variant="bodySmall" style={{color:'#666'}}>{new Date(item.date.seconds * 1000).toLocaleDateString()}</Text>
-                </Card.Content>
-            </Card>
-          ))}
+      <ScrollView style={{ padding: 10 }}>
+        {filteredList.map((item) => (
+          <Card key={item.id} style={styles.card}>
+            <Card.Content>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontWeight: 'bold' }}>{item.productName}</Text>
+                <Text style={{ color: '#D32F2F', fontWeight: 'bold' }}>-{item.quantity}</Text>
+              </View>
+              <Text variant="bodySmall">SKU: {item.sku} | {item.cause}</Text>
+              <Text variant="bodySmall" style={{ color: '#666' }}>{new Date(item.date.seconds * 1000).toLocaleDateString()}</Text>
+            </Card.Content>
+          </Card>
+        ))}
       </ScrollView>
 
       <FAB icon="plus" style={styles.fab} onPress={startWasteProcess} label="Nueva Baja" />
@@ -116,33 +127,33 @@ export default function WasteScreen() {
       {/* MODAL FULL SCREEN PARA EL PROCESO */}
       <NativeModal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
         {cameraVisible ? (
-             <View style={{flex:1, backgroundColor:'black'}}>
-                 <CameraView style={StyleSheet.absoluteFillObject} facing="back" onBarcodeScanned={handleBarCodeScanned} />
-                 <View style={{flex:1, justifyContent:'center', alignItems:'center'}}>
-                    <View style={{width: 250, height: 250, borderWidth: 2, borderColor: 'white', borderRadius: 20}} />
-                 </View>
-                 <View style={{padding:20, paddingBottom:40}}>
-                    <Button mode="contained" buttonColor="white" textColor="black" icon="keyboard" onPress={switchToManual}>Ingresar Manualmente</Button>
-                    <Button mode="text" textColor="white" onPress={() => setModalVisible(false)} style={{marginTop:10}}>Cancelar</Button>
-                 </View>
-             </View>
+          <View style={{ flex: 1, backgroundColor: 'black' }}>
+            <CameraView style={StyleSheet.absoluteFillObject} facing="back" onBarcodeScanned={handleBarCodeScanned} />
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <View style={{ width: 250, height: 250, borderWidth: 2, borderColor: 'white', borderRadius: 20 }} />
+            </View>
+            <View style={{ padding: 20, paddingBottom: 40 }}>
+              <Button mode="contained" buttonColor="white" textColor="black" icon="keyboard" onPress={switchToManual}>Ingresar Manualmente</Button>
+              <Button mode="text" textColor="white" onPress={() => setModalVisible(false)} style={{ marginTop: 10 }}>Cancelar</Button>
+            </View>
+          </View>
         ) : (
-            <ScrollView contentContainerStyle={{padding:20, paddingTop:50}}>
-                <Text variant="headlineSmall" style={{marginBottom:20}}>Detalle de Merma</Text>
-                <TextInput label="SKU" value={sku} onChangeText={setSku} mode="outlined" style={styles.input} />
-                <TextInput label="Cantidad" value={qty} onChangeText={setQty} keyboardType="numeric" mode="outlined" style={styles.input} />
-                
-                <Text style={{marginTop:10}}>Causa:</Text>
-                <RadioButton.Group onValueChange={setCause} value={cause}>
-                    <View style={{flexDirection:'row', marginBottom:20}}>
-                        <View style={{flexDirection:'row', alignItems:'center'}}><RadioButton value="Vencido" /><Text>Vencido</Text></View>
-                        <View style={{flexDirection:'row', alignItems:'center', marginLeft:20}}><RadioButton value="Daño" /><Text>Daño</Text></View>
-                    </View>
-                </RadioButton.Group>
+          <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 50 }}>
+            <Text variant="headlineSmall" style={{ marginBottom: 20 }}>Detalle de Merma</Text>
+            <TextInput label="SKU" value={sku} onChangeText={setSku} mode="outlined" style={styles.input} />
+            <TextInput label="Cantidad" value={qty} onChangeText={setQty} keyboardType="numeric" mode="outlined" style={styles.input} />
 
-                <Button mode="contained" buttonColor="#D32F2F" loading={loading} onPress={handleConfirmWaste}>Confirmar Baja</Button>
-                <Button mode="text" onPress={() => setModalVisible(false)} style={{marginTop:10}}>Cancelar</Button>
-            </ScrollView>
+            <Text style={{ marginTop: 10 }}>Causa:</Text>
+            <RadioButton.Group onValueChange={setCause} value={cause}>
+              <View style={{ flexDirection: 'row', marginBottom: 20 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}><RadioButton value="Vencido" /><Text>Vencido</Text></View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 20 }}><RadioButton value="Daño" /><Text>Daño</Text></View>
+              </View>
+            </RadioButton.Group>
+
+            <Button mode="contained" buttonColor="#D32F2F" loading={loading} onPress={handleConfirmWaste}>Confirmar Baja</Button>
+            <Button mode="text" onPress={() => setModalVisible(false)} style={{ marginTop: 10 }}>Cancelar</Button>
+          </ScrollView>
         )}
       </NativeModal>
     </View>
@@ -153,5 +164,5 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f0f0f0' },
   card: { marginBottom: 10, backgroundColor: 'white' },
   fab: { position: 'absolute', margin: 16, right: 0, bottom: 0, backgroundColor: '#F36F21' },
-  input: { marginBottom: 15, backgroundColor:'white' }
+  input: { marginBottom: 15, backgroundColor: 'white' }
 });

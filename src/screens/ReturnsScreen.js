@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, Image, Alert, StyleSheet, TouchableOpacity, Platform } from 'react-native';
-import { Text, TextInput, Button, Card, Chip, Searchbar, Modal, Portal, RadioButton, IconButton, Menu, Divider, List } from 'react-native-paper';
+import { View, ScrollView, Image, Alert, StyleSheet, TouchableOpacity, Platform, useWindowDimensions } from 'react-native';
+import { Text, TextInput, Button, Card, Chip, Searchbar, Modal, Portal, RadioButton, IconButton, Menu, Divider, List, Avatar } from 'react-native-paper';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { db } from '../../firebaseConfig';
@@ -47,6 +48,9 @@ function NewReturnForm() {
   const [invoice, setInvoice] = useState('');
   const [date, setDate] = useState(new Date());
   const [vehicle, setVehicle] = useState('');
+  const [route, setRoute] = useState('');
+  const [driver, setDriver] = useState('');
+  const [evidence, setEvidence] = useState(null);
   const [warehouse, setWarehouse] = useState('');
 
   // UI State
@@ -83,6 +87,20 @@ function NewReturnForm() {
     if (selected) setDate(selected);
   };
 
+  const pickImage = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5,
+      base64: true,
+    });
+
+    if (!result.canceled) {
+      setEvidence(result.assets[0].base64);
+    }
+  };
+
   const handleAddItem = () => {
     if (!selectedProduct || !qty || reason === 'Seleccionar...') {
       return Alert.alert("Error", "Completa los datos del producto");
@@ -92,6 +110,7 @@ function NewReturnForm() {
       sku: selectedProduct.sku,
       quantity: parseInt(qty),
       reason,
+      price: selectedProduct.price || 0,
       id: Date.now().toString() // temporary ID
     };
     setItems([...items, newItem]);
@@ -117,6 +136,9 @@ function NewReturnForm() {
         invoice,
         date,
         vehicle,
+        route,
+        driver,
+        evidence,
         warehouse,
         items,
         status: 'Pendiente',
@@ -124,10 +146,24 @@ function NewReturnForm() {
         origin: 'Móvil'
       });
       Alert.alert("Éxito", "Devolución registrada correctamente");
+
+      // Trigger Alert for New Return
+      await addDoc(collection(db, "general_alerts"), {
+        title: 'Nueva Devolución',
+        desc: `Cliente: ${client}. Documento: ${docType} ${invoice}.`,
+        type: 'Devolución',
+        color: '#1976D2',
+        icon: 'keyboard-return',
+        date: new Date().toISOString().split('T')[0],
+        isSystem: true
+      });
       // Reset Form
       setClient('');
       setInvoice('');
       setVehicle('');
+      setRoute('');
+      setDriver('');
+      setEvidence(null);
       setWarehouse('');
       setItems([]);
       setDate(new Date());
@@ -175,9 +211,29 @@ function NewReturnForm() {
           {showDatePicker && <DateTimePicker value={date} mode="date" display="default" onChange={onDateChange} />}
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.label}>Vehículo / Transporte</Text>
-          <TextInput placeholder="Ej: Citroen..." value={vehicle} onChangeText={setVehicle} mode="outlined" style={styles.input} dense />
+          <Text style={styles.label}>Vehículo / Patente</Text>
+          <TextInput placeholder="Ej: AB-CD-12" value={vehicle} onChangeText={setVehicle} mode="outlined" style={styles.input} dense />
         </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Ruta</Text>
+          <TextInput placeholder="Ej: Ruta 5" value={route} onChangeText={setRoute} mode="outlined" style={styles.input} dense />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Chofer / Bodeguero</Text>
+          <TextInput placeholder="Nombre..." value={driver} onChangeText={setDriver} mode="outlined" style={styles.input} dense />
+        </View>
+      </View>
+
+      <View style={{ marginBottom: 10 }}>
+        <Text style={styles.label}>Evidencia (Foto)</Text>
+        <TouchableOpacity onPress={pickImage} style={{ flexDirection: 'row', alignItems: 'center', padding: 10, borderWidth: 1, borderColor: '#ccc', borderRadius: 5, borderStyle: 'dashed' }}>
+          <MaterialCommunityIcons name="camera" size={24} color="#666" style={{ marginRight: 10 }} />
+          <Text style={{ color: '#666' }}>{evidence ? "Imagen Seleccionada" : "Adjuntar Foto"}</Text>
+        </TouchableOpacity>
+        {evidence && <Text style={{ color: 'green', fontSize: 12, marginTop: 5 }}>Imagen cargada correctamente</Text>}
       </View>
 
       <View style={{ marginBottom: 10 }}>
@@ -358,21 +414,62 @@ function ReturnsList({ statusFilter }) {
       <ScrollView style={styles.listContainer}>
         {list.map((item) => (
           <Card key={item.id} style={styles.card}>
-            <Card.Title title={item.truck} subtitle={item.invoice} right={(props) => <Chip {...props} style={{ marginRight: 10 }}>{item.status}</Chip>} />
-            <Card.Content><Text>Cliente: {item.client}</Text></Card.Content>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 10, borderBottomWidth: 1, borderBottomColor: '#eee' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <MaterialCommunityIcons name="calendar" size={16} color="#666" style={{ marginRight: 5 }} />
+                <Text variant="bodySmall" style={{ color: '#666' }}>
+                  {item.date?.toDate ? item.date.toDate().toLocaleDateString() : new Date().toLocaleDateString()}
+                </Text>
+              </View>
+              <Chip style={{ backgroundColor: '#FFF3E0' }} textStyle={{ color: '#E65100', fontSize: 10, fontWeight: 'bold' }}>PENDIENTE</Chip>
+            </View>
 
-            <Card.Actions>
-              <Button icon="pencil" onPress={() => setEditingItem(item)}>Editar</Button>
+            <Card.Content style={{ paddingTop: 10 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+                <Text variant="titleMedium" style={{ fontWeight: 'bold' }}>{item.client}</Text>
+                <Text variant="bodyMedium" style={{ fontWeight: 'bold', color: '#555' }}>{item.docType} {item.invoice}</Text>
+              </View>
 
-              {item.status === 'Pendiente' && (
-                <Button textColor="red" onPress={() => handleAction(item.id, 'Rechazado')}>Rechazar</Button>
+              <Divider style={{ marginVertical: 8 }} />
+
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 15, marginBottom: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <MaterialCommunityIcons name="truck-delivery" size={16} color="#666" style={{ marginRight: 5 }} />
+                  <Text variant="bodySmall">{item.vehicle || '-'}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <MaterialCommunityIcons name="map-marker-path" size={16} color="#666" style={{ marginRight: 5 }} />
+                  <Text variant="bodySmall">{item.route || '-'}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <MaterialCommunityIcons name="account" size={16} color="#666" style={{ marginRight: 5 }} />
+                  <Text variant="bodySmall">{item.driver || '-'}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <MaterialCommunityIcons name="warehouse" size={16} color="#666" style={{ marginRight: 5 }} />
+                  <Text variant="bodySmall">{item.warehouse || '-'}</Text>
+                </View>
+              </View>
+
+              <View style={{ backgroundColor: '#f5f5f5', padding: 8, borderRadius: 5 }}>
+                <Text variant="bodySmall" style={{ fontWeight: 'bold', marginBottom: 5 }}>Items ({item.items?.length || 0})</Text>
+                {item.items?.map((i, idx) => (
+                  <Text key={idx} variant="bodySmall" style={{ color: '#555' }}>• {i.productName} (x{i.quantity}) - {i.reason}</Text>
+                ))}
+              </View>
+
+              {item.evidence && (
+                <View style={{ marginTop: 10 }}>
+                  <Text variant="bodySmall" style={{ fontWeight: 'bold', marginBottom: 5 }}>Evidencia</Text>
+                  <Image source={{ uri: `data:image/jpeg;base64,${item.evidence}` }} style={{ width: 60, height: 60, borderRadius: 5 }} />
+                </View>
               )}
+            </Card.Content>
 
-              {item.status === 'Pendiente' && (
-                <Button textColor="green" onPress={() => handleAction(item.id, 'Aprobado')}>Aprobar</Button>
-              )}
+            <Card.Actions style={{ justifyContent: 'flex-end', borderTopWidth: 1, borderTopColor: '#eee', marginTop: 10 }}>
+              <Button mode="outlined" textColor="red" onPress={() => handleAction(item.id, 'Rechazado')} style={{ borderColor: 'red', marginRight: 10 }}>Rechazar</Button>
+              <Button mode="contained" buttonColor="green" onPress={() => handleAction(item.id, 'Aprobado')}>Aprobar</Button>
             </Card.Actions>
-
           </Card>
         ))}
       </ScrollView>
@@ -385,8 +482,21 @@ function ReturnsList({ statusFilter }) {
 function ReturnsHistory() {
   const [history, setHistory] = useState([]);
   const [search, setSearch] = useState('');
-  const [selectedDate, setSelectedDate] = useState(null);
-  const [showPicker, setShowPicker] = useState(false);
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
+
+  // Filters State
+  const [date, setDate] = useState(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const [origin, setOrigin] = useState('Todos los Orígenes');
+  const [showOriginModal, setShowOriginModal] = useState(false);
+
+  const [reason, setReason] = useState('Todos los Motivos');
+  const [showReasonModal, setShowReasonModal] = useState(false);
+
+  const ORIGINS = ["Todos los Orígenes", "Móvil", "Web"];
+  const REASONS_FILTER = ["Todos los Motivos", "Producto Vencido", "Envase Dañado", "Error de Pedido", "Rechazo Cliente"];
 
   useEffect(() => {
     const q = query(collection(db, "returns"), orderBy("date", "desc"));
@@ -400,56 +510,238 @@ function ReturnsHistory() {
     return () => unsubscribe();
   }, []);
 
-  const onDateChange = (event, date) => {
-    setShowPicker(false);
-    if (date) setSelectedDate(date);
+  const onDateChange = (event, selected) => {
+    setShowDatePicker(false);
+    if (selected) setDate(selected);
   };
 
   const filtered = history.filter(item => {
+    // Text Search
     const textMatch =
       (item.client && item.client.toLowerCase().includes(search.toLowerCase())) ||
-      (item.invoice && item.invoice.includes(search)) ||
-      (item.truck && item.truck.toLowerCase().includes(search.toLowerCase()));
+      (item.id && item.id.toLowerCase().includes(search.toLowerCase())) ||
+      (item.invoice && item.invoice.includes(search));
 
+    // Date Filter
     let dateMatch = true;
-    if (selectedDate) dateMatch = item.jsDate.toDateString() === selectedDate.toDateString();
+    if (date) {
+      dateMatch = item.jsDate.toDateString() === date.toDateString();
+    }
 
-    return textMatch && dateMatch;
+    // Origin Filter
+    let originMatch = true;
+    if (origin !== 'Todos los Orígenes') {
+      originMatch = item.origin === origin;
+    }
+
+    // Reason Filter
+    let reasonMatch = true;
+    if (reason !== 'Todos los Motivos') {
+      reasonMatch = item.items?.some(i => i.reason === reason);
+    }
+
+    return textMatch && dateMatch && originMatch && reasonMatch;
   });
 
+  // Table Column Widths
+  const colWidths = {
+    id: 0.1,
+    fecha: 0.15,
+    origen: 0.1,
+    cliente: 0.25,
+    items: 0.1,
+    monto: 0.15,
+    estado: 0.15
+  };
+
   return (
-    <View style={{ flex: 1, backgroundColor: '#f0f0f0' }}>
-      <View style={{ backgroundColor: 'white', padding: 10 }}>
-        <Searchbar placeholder="Buscar Cliente, Factura..." onChangeText={setSearch} value={search} style={{ marginBottom: 10, backgroundColor: '#f0f0f0' }} />
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Button mode="outlined" icon="calendar" onPress={() => setShowPicker(true)} style={{ flex: 1, marginRight: 10 }}>
-            {selectedDate ? selectedDate.toLocaleDateString() : "Filtrar por Fecha"}
-          </Button>
-          {selectedDate && <IconButton icon="close-circle" size={24} onPress={() => setSelectedDate(null)} />}
-        </View>
-        {showPicker && <DateTimePicker value={selectedDate || new Date()} mode="date" display="default" onChange={onDateChange} />}
+    <View style={{ flex: 1, backgroundColor: '#F5F7FA' }}>
+      {/* --- FILTER BAR --- */}
+      <View style={[styles.filterContainer, isMobile && styles.filterContainerMobile]}>
+        {isMobile ? (
+          // MOBILE FILTER LAYOUT (Vertical Stack)
+          <View style={{ gap: 10 }}>
+            <TextInput
+              placeholder="Buscar por Cliente o ID..."
+              value={search}
+              onChangeText={setSearch}
+              mode="outlined"
+              style={{ backgroundColor: 'white', height: 40 }}
+              dense
+              outlineStyle={{ borderRadius: 8, borderColor: '#E0E0E0' }}
+            />
+
+            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.mobileFilterInput}>
+              <Text style={{ flex: 1, color: date ? '#333' : '#999', fontSize: 12 }} numberOfLines={1}>
+                {date ? date.toLocaleDateString() : "Filtrar Fecha"}
+              </Text>
+              <MaterialCommunityIcons name="calendar" size={20} color="#2196F3" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.mobileFilterInput} onPress={() => setShowOriginModal(true)}>
+              <Text style={{ color: '#555', fontSize: 12 }}>{origin}</Text>
+              <MaterialCommunityIcons name="chevron-down" size={20} color="#999" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.mobileFilterInput} onPress={() => setShowReasonModal(true)}>
+              <Text style={{ color: '#555', fontSize: 12 }}>{reason}</Text>
+              <MaterialCommunityIcons name="chevron-down" size={20} color="#999" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          // DESKTOP FILTER LAYOUT (Grid/Row)
+          <>
+            <View style={styles.filterRow}>
+              <View style={{ flex: 2 }}>
+                <TextInput
+                  placeholder="Buscar por Cliente o ID..."
+                  value={search}
+                  onChangeText={setSearch}
+                  mode="outlined"
+                  style={{ backgroundColor: 'white', height: 40 }}
+                  dense
+                  outlineStyle={{ borderRadius: 8, borderColor: '#E0E0E0' }}
+                />
+              </View>
+              <View style={{ flex: 1.5 }}>
+                <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.desktopFilterInput}>
+                  <Text style={{ flex: 1, color: date ? '#333' : '#999', fontSize: 12 }} numberOfLines={1}>
+                    {date ? date.toLocaleDateString() : "Filtrar Fecha"}
+                  </Text>
+                  <MaterialCommunityIcons name="calendar" size={20} color="#2196F3" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.filterRow}>
+              <TouchableOpacity style={styles.filterDropdown} onPress={() => setShowOriginModal(true)}>
+                <Text style={{ color: '#555', fontSize: 12 }}>{origin}</Text>
+                <MaterialCommunityIcons name="chevron-down" size={20} color="#999" />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.filterDropdown} onPress={() => setShowReasonModal(true)}>
+                <Text style={{ color: '#555', fontSize: 12 }}>{reason}</Text>
+                <MaterialCommunityIcons name="chevron-down" size={20} color="#999" />
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
+        {showDatePicker && <DateTimePicker value={date || new Date()} mode="date" display="default" onChange={onDateChange} />}
       </View>
 
-      <ScrollView style={styles.listContainer}>
-        {filtered.length === 0 && <Text style={{ textAlign: 'center', marginTop: 20, color: '#999' }}>No se encontraron resultados.</Text>}
-        {filtered.map((item) => (
-          <Card key={item.id} style={styles.card}>
-            <Card.Title
-              title={item.client || "Sin Cliente"}
-              subtitle={item.jsDate.toLocaleDateString()}
-              right={(props) => (
-                <Text {...props} style={{ color: item.status === 'Aprobado' ? 'green' : 'red', fontWeight: 'bold', marginRight: 15 }}>
-                  {item.status?.toUpperCase()}
-                </Text>
-              )}
-            />
-            <Card.Content>
-              <Text style={{ fontWeight: 'bold' }}>Factura: {item.invoice}</Text>
-              <Text variant="bodySmall" style={{ color: '#666' }}>Camión: {item.truck} | Motivo: {item.reason}</Text>
-            </Card.Content>
-          </Card>
-        ))}
-      </ScrollView>
+      {/* --- CONTENT --- */}
+      {isMobile ? (
+        // MOBILE CARD VIEW
+        <ScrollView style={styles.listContainer}>
+          {filtered.length === 0 && <Text style={{ textAlign: 'center', marginTop: 20, color: '#999' }}>No se encontraron resultados.</Text>}
+          {filtered.map((item) => (
+            <Card key={item.id} style={styles.card}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 10, borderBottomWidth: 1, borderBottomColor: '#eee' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <MaterialCommunityIcons name={(item.origin || 'Móvil') === 'Móvil' ? "cellphone" : "monitor"} size={16} color="#666" />
+                  <Text style={{ fontSize: 12, color: '#666' }}>{item.jsDate.toLocaleDateString()}</Text>
+                </View>
+                <Text style={{ fontSize: 12, color: '#999' }}>ID: {item.id.slice(-6)}</Text>
+              </View>
+              <Card.Content style={{ paddingTop: 10 }}>
+                <Text variant="titleMedium" style={{ fontWeight: 'bold' }}>{item.client || "Sin Cliente"}</Text>
+                <Text variant="bodySmall" style={{ color: '#555', marginBottom: 5 }}>{item.docType} {item.invoice}</Text>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
+                  <View>
+                    <Text variant="bodySmall" style={{ color: '#999' }}>Items</Text>
+                    <Text variant="bodyMedium">{item.items?.length || 0}</Text>
+                  </View>
+                  <View>
+                    <Text variant="bodySmall" style={{ color: '#999' }}>Monto Est.</Text>
+                    <Text variant="bodyMedium">${(item.items?.reduce((sum, i) => sum + (i.quantity * (i.price || 0)), 0) || 0).toLocaleString()}</Text>
+                  </View>
+                  <View>
+                    <Text variant="bodySmall" style={{ color: '#999' }}>Motivo</Text>
+                    <Text variant="bodyMedium" numberOfLines={1} style={{ maxWidth: 100 }}>
+                      {item.items?.length > 1 ? "Varios" : (item.items?.[0]?.reason || "-")}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Chip
+                      style={{ backgroundColor: item.status === 'Aprobado' ? '#E8F5E9' : '#FFEBEE', height: 24 }}
+                      textStyle={{ color: item.status === 'Aprobado' ? '#2E7D32' : '#C62828', fontSize: 10, fontWeight: 'bold', lineHeight: 12 }}
+                    >
+                      {item.status?.toUpperCase()}
+                    </Chip>
+                  </View>
+                </View>
+              </Card.Content>
+            </Card>
+          ))}
+        </ScrollView>
+      ) : (
+        // DESKTOP/TABLET TABLE VIEW
+        <View style={{ flex: 1, marginHorizontal: 10, marginBottom: 10, backgroundColor: 'white', borderRadius: 10, elevation: 2, overflow: 'hidden' }}>
+          {/* Header */}
+          <View style={{ flexDirection: 'row', padding: 12, borderBottomWidth: 1, borderBottomColor: '#EEE', backgroundColor: '#FAFAFA' }}>
+            <Text style={[styles.tableHeader, { flex: colWidths.id }]}>ID</Text>
+            <Text style={[styles.tableHeader, { flex: colWidths.fecha }]}>FECHA</Text>
+            <Text style={[styles.tableHeader, { flex: colWidths.origen }]}>ORIGEN</Text>
+            <Text style={[styles.tableHeader, { flex: colWidths.cliente }]}>CLIENTE / RUTA</Text>
+            <Text style={[styles.tableHeader, { flex: colWidths.items, textAlign: 'center' }]}>ITEMS</Text>
+            <Text style={[styles.tableHeader, { flex: colWidths.monto, textAlign: 'right' }]}>MONTO EST.</Text>
+            <Text style={[styles.tableHeader, { flex: colWidths.estado, textAlign: 'center' }]}>ESTADO</Text>
+          </View>
+
+          {/* List */}
+          <ScrollView>
+            {filtered.length === 0 ? (
+              <Text style={{ textAlign: 'center', padding: 20, color: '#999' }}>No se encontraron resultados.</Text>
+            ) : (
+              filtered.map((item, index) => (
+                <View key={item.id} style={{ flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#F5F5F5', alignItems: 'center' }}>
+                  <Text style={[styles.tableCell, { flex: colWidths.id, color: '#999', fontSize: 10 }]} numberOfLines={1}>{item.id.slice(-6)}</Text>
+                  <Text style={[styles.tableCell, { flex: colWidths.fecha }]}>{item.jsDate.toLocaleDateString()}</Text>
+                  <View style={[styles.tableCell, { flex: colWidths.origen, flexDirection: 'row', alignItems: 'center', gap: 5 }]}>
+                    <MaterialCommunityIcons name={(item.origin || 'Móvil') === 'Móvil' ? "cellphone" : "monitor"} size={16} color="#555" />
+                    <Text style={{ fontSize: 11, color: '#555' }}>{item.origin || 'Móvil'}</Text>
+                  </View>
+                  <View style={{ flex: colWidths.cliente }}>
+                    <Text style={{ fontWeight: 'bold', fontSize: 12, color: '#333' }} numberOfLines={1}>{item.client}</Text>
+                    <Text style={{ fontSize: 10, color: '#999' }} numberOfLines={1}>{item.route || 'Sin Ruta'}</Text>
+                  </View>
+                  <Text style={[styles.tableCell, { flex: colWidths.items, textAlign: 'center' }]}>{item.items?.length || 0}</Text>
+                  <Text style={[styles.tableCell, { flex: colWidths.monto, textAlign: 'right', color: '#555' }]}>
+                    ${(item.items?.reduce((sum, i) => sum + (i.quantity * (i.price || 0)), 0) || 0).toLocaleString()}
+                  </Text>
+                  <View style={{ flex: colWidths.estado, alignItems: 'center' }}>
+                    <Chip
+                      style={{ backgroundColor: item.status === 'Aprobado' ? '#E8F5E9' : '#FFEBEE', height: 24 }}
+                      textStyle={{ color: item.status === 'Aprobado' ? '#2E7D32' : '#C62828', fontSize: 9, fontWeight: 'bold', lineHeight: 10 }}
+                    >
+                      {item.status?.toUpperCase()}
+                    </Chip>
+                  </View>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Modals */}
+      <SelectionModal
+        visible={showOriginModal}
+        hide={() => setShowOriginModal(false)}
+        title="Filtrar por Origen"
+        items={ORIGINS}
+        onSelect={setOrigin}
+      />
+
+      <SelectionModal
+        visible={showReasonModal}
+        hide={() => setShowReasonModal(false)}
+        title="Filtrar por Motivo"
+        items={REASONS_FILTER}
+        onSelect={setReason}
+      />
     </View>
   );
 }
@@ -473,5 +765,67 @@ const styles = StyleSheet.create({
   input: { marginBottom: 12, backgroundColor: 'white' },
   card: { marginBottom: 10, backgroundColor: 'white' },
   modal: { backgroundColor: 'white', padding: 20, margin: 20, borderRadius: 10 },
-  label: { marginBottom: 5, fontWeight: 'bold', color: '#555' }
+  label: { marginBottom: 5, fontWeight: 'bold', color: '#555' },
+  filterContainer: {
+    padding: 15,
+    backgroundColor: 'white',
+    borderRadius: 10,
+    margin: 10,
+    elevation: 2
+  },
+  filterContainerMobile: {
+    padding: 10,
+    gap: 10
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10
+  },
+  filterRowMobile: {
+    flexDirection: 'column',
+    gap: 10,
+    marginBottom: 0
+  },
+  filterDropdown: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    height: 40,
+    paddingHorizontal: 10
+  },
+  tableHeader: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#999'
+  },
+  tableCell: {
+    fontSize: 11,
+    color: '#555'
+  },
+  mobileFilterInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    height: 40,
+    paddingHorizontal: 10,
+    backgroundColor: 'white',
+    width: '100%'
+  },
+  desktopFilterInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    height: 40,
+    paddingHorizontal: 10
+  }
 });

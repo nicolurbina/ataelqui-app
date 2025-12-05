@@ -1,138 +1,148 @@
 import React, { useState, useEffect } from 'react';
 import { View, ScrollView, StyleSheet, Alert } from 'react-native';
-// AQUÍ FALTABA EL IMPORT DE IconButton, AHORA ESTÁ AGREGADO:
 import { Text, Card, Chip, Searchbar, ActivityIndicator, FAB, Divider, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { collection, onSnapshot, query, addDoc, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
 export default function NotificationsScreen() {
-  const [productAlerts, setProductAlerts] = useState([]);
   const [systemAlerts, setSystemAlerts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filter, setFilter] = useState('Todas'); 
+  const [filter, setFilter] = useState('Todas');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. ALERTAS DE PRODUCTOS
-    const qProducts = query(collection(db, "products"));
-    const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
-      const generated = [];
-      const today = new Date();
-
-      snapshot.docs.forEach((doc) => {
-        const p = doc.data();
-        if (p.expiryDate) {
-            const expDate = new Date(p.expiryDate);
-            const diffDays = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24)); 
-            if (diffDays < 0) {
-                generated.push({ id: doc.id + '_expired', title: 'Producto Vencido', desc: `${p.name} venció hace ${Math.abs(diffDays)} días.`, type: 'FEFO', color: '#D32F2F', icon: 'alert-octagon', date: p.expiryDate, isSystem: false });
-            } else if (diffDays <= 7) {
-                generated.push({ id: doc.id + '_fefo', title: 'Riesgo Vencimiento', desc: `${p.name} vence en ${diffDays} días.`, type: 'FEFO', color: '#F57C00', icon: 'clock-alert', date: p.expiryDate, isSystem: false });
-            }
-        }
-        if (p.stock !== undefined && p.stock <= 10) {
-            generated.push({ id: doc.id + '_stock', title: 'Stock Crítico', desc: `Quedan solo ${p.stock} unidades de ${p.name}.`, type: 'Stock', color: '#FBC02D', icon: 'package-variant-closed', date: new Date().toISOString().split('T')[0], isSystem: false });
-        }
-      });
-      setProductAlerts(generated);
-    });
-
-    // 2. ALERTAS DE SISTEMA
-    const qAlerts = query(collection(db, "general_alerts"), orderBy("date", "desc"));
+    // ONLY SYSTEM ALERTS (Persistent)
+    const qAlerts = query(collection(db, "general_alerts"));
     const unsubscribeAlerts = onSnapshot(qAlerts, (snapshot) => {
-      setSystemAlerts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), isSystem: true })));
+      const alerts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), isSystem: true }));
+      // Sort client-side: Newest first
+      alerts.sort((a, b) => {
+        const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date || 0);
+        const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date || 0);
+        return dateB - dateA;
+      });
+      setSystemAlerts(alerts);
       setLoading(false);
     });
 
-    return () => { unsubscribeProducts(); unsubscribeAlerts(); };
+    return () => unsubscribeAlerts();
   }, []);
 
-  const simulateSystemEvents = async () => {
-    try {
-      await addDoc(collection(db, "general_alerts"), {
-        title: 'Discrepancia en Harina',
-        desc: 'El conteo físico no coincide con el sistema.',
-        type: 'Discrepancia',
-        color: '#5E35B1',
-        icon: 'file-compare',
-        date: new Date().toISOString().split('T')[0],
-        expected: 100, 
-        counted: 80    
-      });
-
-      await addDoc(collection(db, "general_alerts"), {
-        title: 'Sincronización Completa',
-        desc: 'Datos actualizados con el servidor central.',
-        type: 'Sistema',
-        color: '#757575',
-        icon: 'cloud-check',
-        date: new Date().toISOString().split('T')[0]
-      });
-      Alert.alert("Simulación", "Se generó una Discrepancia.");
-    } catch (e) { Alert.alert("Error", e.message); }
-  };
-
   const deleteAlert = async (alert) => {
-    if (!alert.isSystem) return;
     try { await deleteDoc(doc(db, "general_alerts", alert.id)); } catch (e) { console.log(e); }
   };
 
-  const filteredAlerts = [...systemAlerts, ...productAlerts].filter(alert => {
+  const deleteAllSystemAlerts = async () => {
+    Alert.alert(
+      "Borrar Alertas",
+      "¿Estás seguro de eliminar todas las notificaciones?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Borrar",
+          style: "destructive",
+          onPress: async () => {
+            systemAlerts.forEach(a => {
+              deleteDoc(doc(db, "general_alerts", a.id));
+            });
+          }
+        }
+      ]
+    );
+  };
+
+  const filteredAlerts = systemAlerts.filter(alert => {
     const matchesType = filter === 'Todas' || alert.type === filter;
     const matchesSearch = alert.desc.toLowerCase().includes(searchQuery.toLowerCase()) || alert.title.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesType && matchesSearch;
   });
 
+  const getIconForType = (type) => {
+    switch (type) {
+      case 'Discrepancia': return 'file-document-outline';
+      case 'Sistema': return 'cloud-check';
+      case 'Stock': return 'package-variant';
+      case 'FEFO': return 'calendar-clock';
+      case 'Devolución': return 'keyboard-return';
+      case 'Merma': return 'trash-can-outline';
+      default: return 'bell-outline';
+    }
+  };
+
   if (loading) return <View style={styles.center}><ActivityIndicator color="#F36F21" /></View>;
 
   return (
     <View style={styles.container}>
-        <View style={{padding: 15, backgroundColor:'white'}}>
-            <Searchbar placeholder="Buscar..." onChangeText={setSearchQuery} value={searchQuery} style={{marginBottom:10, backgroundColor:'#f0f0f0'}} />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {['Todas', 'FEFO', 'Stock', 'Discrepancia', 'Sistema'].map((f) => (
-                    <Chip key={f} mode="outlined" style={[styles.chip, filter === f && {backgroundColor:'#FFF3E0', borderColor:'#F36F21'}]} onPress={() => setFilter(f)}>{f}</Chip>
-                ))}
-            </ScrollView>
+      <View style={{ padding: 15, backgroundColor: 'white' }}>
+        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+          <Searchbar placeholder="Buscar..." onChangeText={setSearchQuery} value={searchQuery} style={{ flex: 1, backgroundColor: '#f0f0f0' }} />
+          <IconButton icon="trash-can-outline" mode="contained" containerColor="#FFEBEE" iconColor="#D32F2F" onPress={deleteAllSystemAlerts} />
         </View>
-
-        <ScrollView style={{padding:10}}>
-            {filteredAlerts.map((alert) => (
-                <Card key={alert.id} style={styles.card} onLongPress={() => deleteAlert(alert)}>
-                    <Card.Title 
-                        title={alert.title} 
-                        titleStyle={{color: alert.color, fontWeight:'bold'}}
-                        subtitle={alert.type + " • " + alert.date}
-                        left={(props) => <MaterialCommunityIcons {...props} name={alert.icon} size={40} color={alert.color} />}
-                        // AQUÍ ES DONDE SE USABA IconButton Y FALLABA
-                        right={(props) => alert.isSystem ? <IconButton {...props} icon="close" onPress={() => deleteAlert(alert)}/> : null}
-                    />
-                    <Card.Content>
-                        <Text variant="bodyMedium">{alert.desc}</Text>
-                        {alert.type === 'Discrepancia' && alert.expected !== undefined && (
-                            <View style={{marginTop:10, padding:10, backgroundColor:'#F3E5F5', borderRadius:8}}>
-                                <View style={{flexDirection:'row', justifyContent:'space-between', marginBottom:5}}>
-                                    <Text>Esperado:</Text>
-                                    <Text style={{fontWeight:'bold'}}>{alert.expected}</Text>
-                                </View>
-                                <View style={{flexDirection:'row', justifyContent:'space-between', marginBottom:5}}>
-                                    <Text>Contado:</Text>
-                                    <Text style={{fontWeight:'bold'}}>{alert.counted}</Text>
-                                </View>
-                                <Divider style={{marginVertical:5}} />
-                                <View style={{flexDirection:'row', justifyContent:'space-between'}}>
-                                    <Text style={{color: '#D32F2F', fontWeight:'bold'}}>Diferencia:</Text>
-                                    <Text style={{color: '#D32F2F', fontWeight:'bold'}}>{alert.counted - alert.expected}</Text>
-                                </View>
-                            </View>
-                        )}
-                    </Card.Content>
-                </Card>
-            ))}
-            <View style={{height:80}} /> 
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {['Todas', 'FEFO', 'Stock', 'Discrepancia', 'Sistema', 'Devolución', 'Merma'].map((f) => (
+            <Chip key={f} mode="outlined" style={[styles.chip, filter === f && { backgroundColor: '#FFF3E0', borderColor: '#F36F21' }]} onPress={() => setFilter(f)}>{f}</Chip>
+          ))}
         </ScrollView>
-        <FAB icon="lightning-bolt" label="Simular" style={styles.fab} onPress={simulateSystemEvents} color="white" />
+      </View>
+
+      <ScrollView style={{ padding: 10 }}>
+        {filteredAlerts.length === 0 && (
+          <View style={{ padding: 20, alignItems: 'center' }}>
+            <Text style={{ color: '#999', marginBottom: 10 }}>No hay notificaciones.</Text>
+          </View>
+        )}
+        {filteredAlerts.map((alert) => {
+          const dateObj = alert.date?.toDate ? alert.date.toDate() : new Date(alert.date || Date.now());
+          const dateStr = dateObj.toLocaleDateString();
+          const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const icon = getIconForType(alert.type);
+
+          return (
+            <Card key={alert.id} style={styles.card}>
+              <View style={{ flexDirection: 'row', padding: 15 }}>
+                {/* Icon Column */}
+                <View style={{ marginRight: 15, justifyContent: 'center' }}>
+                  <MaterialCommunityIcons name={icon} size={32} color="#5E35B1" />
+                </View>
+
+                {/* Content Column */}
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <View>
+                      <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#4527A0', marginBottom: 2 }}>{alert.title}</Text>
+                      <Text style={{ fontSize: 12, color: '#666' }}>{alert.type} • {dateStr} {timeStr}</Text>
+                    </View>
+                    <IconButton icon="close" size={20} style={{ margin: 0, marginTop: -5, marginRight: -10 }} onPress={() => deleteAlert(alert)} />
+                  </View>
+
+                  <Text style={{ marginTop: 8, color: '#444', fontSize: 13 }}>{alert.desc}</Text>
+
+                  {/* Discrepancy Details Box */}
+                  {alert.type === 'Discrepancia' && alert.expected !== undefined && (
+                    <View style={{ marginTop: 10, padding: 10, backgroundColor: '#F3E5F5', borderRadius: 8 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+                        <Text style={{ fontSize: 12 }}>Esperado:</Text>
+                        <Text style={{ fontSize: 12, fontWeight: 'bold' }}>{alert.expected}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+                        <Text style={{ fontSize: 12 }}>Contado:</Text>
+                        <Text style={{ fontSize: 12, fontWeight: 'bold' }}>{alert.counted}</Text>
+                      </View>
+                      <Divider style={{ marginVertical: 5, backgroundColor: '#E1BEE7' }} />
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ fontSize: 12, color: '#D32F2F', fontWeight: 'bold' }}>Diferencia:</Text>
+                        <Text style={{ fontSize: 12, color: '#D32F2F', fontWeight: 'bold' }}>{alert.counted - alert.expected}</Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              </View>
+            </Card>
+          );
+        })}
+        <View style={{ height: 80 }} />
+      </ScrollView>
     </View>
   );
 }
