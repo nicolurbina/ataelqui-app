@@ -1,6 +1,6 @@
 import { addDoc, collection, doc, getDocs, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
-import { Alert, Keyboard, ScrollView, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { Alert, Keyboard, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Button, Card, FAB, IconButton, List, Modal, Portal, Text, TextInput } from 'react-native-paper';
 import { db } from '../../firebaseConfig';
 
@@ -32,7 +32,7 @@ export default function WasteScreen() {
 
   useEffect(() => {
     // 1. Listen to Waste History
-    const q = query(collection(db, "mermas"), orderBy("date", "desc"));
+    const q = query(collection(db, "waste"), orderBy("date", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setWastes(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     });
@@ -51,7 +51,7 @@ export default function WasteScreen() {
   // --- SEARCH LOGIC ---
   const handleSearch = (text) => {
     setSku(text); // We use 'sku' state as the search input value temporarily
-    if (text.length > 1) {
+    if (text.length > 0) {
       const lower = text.toLowerCase();
       const results = allProducts.filter(p =>
         (p.name && p.name.toLowerCase().includes(lower)) ||
@@ -94,7 +94,7 @@ export default function WasteScreen() {
       await updateDoc(doc(db, "products", selectedProduct.id), { stock: currentStock - deduction });
 
       // 3. Record Waste
-      await addDoc(collection(db, "mermas"), {
+      await addDoc(collection(db, "waste"), {
         sku: selectedProduct.sku,
         productName: selectedProduct.name,
         quantity: deduction,
@@ -215,7 +215,7 @@ export default function WasteScreen() {
       {/* MODAL FORM */}
       <Portal>
         <Modal visible={modalVisible} onDismiss={resetForm} contentContainerStyle={styles.modalContainer}>
-          <TouchableWithoutFeedback onPress={() => { setShowProductList(false); Keyboard.dismiss(); }}>
+          <View onStartShouldSetResponder={() => true} onResponderRelease={() => Keyboard.dismiss()}>
             <View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
                 <Text variant="titleMedium" style={{ fontWeight: 'bold' }}>Registrar Nueva Merma</Text>
@@ -241,7 +241,7 @@ export default function WasteScreen() {
                         <List.Item
                           key={p.id}
                           title={p.name}
-                          description={`SKU: ${p.sku} | Stock: ${p.stock}`}
+                          description={`SKU: ${p.sku} | Stock: ${p.stock || 0}`}
                           onPress={() => handleSelectProduct(p)}
                           style={{ borderBottomWidth: 1, borderBottomColor: '#eee' }}
                         />
@@ -297,7 +297,7 @@ export default function WasteScreen() {
                 <Button mode="contained" onPress={handleConfirmWaste} buttonColor="#D32F2F" loading={loading}>Registrar Pérdida</Button>
               </View>
             </View>
-          </TouchableWithoutFeedback>
+          </View>
         </Modal>
       </Portal>
     </View>

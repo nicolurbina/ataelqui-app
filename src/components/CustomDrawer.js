@@ -71,7 +71,7 @@ export default function CustomDrawer(props) {
                                 label={({ color }) => (
                                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1 }}>
                                         <Text style={{ color, fontWeight: 'bold', marginLeft: 10 }}>{label}</Text>
-                                        {route.name === 'Alertas' && badgeCount > 0 && (
+                                        {route.name === 'Notificaciones' && badgeCount > 0 && (
                                             <Badge size={22} style={{ backgroundColor: '#D32F2F', color: 'white', fontWeight: 'bold' }}>
                                                 {badgeCount}
                                             </Badge>

@@ -102,7 +102,7 @@ function DrawerNavigator() {
                 options={{ title: 'Registro de Mermas', drawerIcon: ({ color }) => <MaterialCommunityIcons name="trash-can-outline" size={22} color={color} /> }}
             />
             <Drawer.Screen
-                name="Alertas"
+                name="Notificaciones"
                 component={NotificationsScreen}
                 options={{ drawerIcon: ({ color }) => <MaterialCommunityIcons name="bell-outline" size={22} color={color} /> }}
             />

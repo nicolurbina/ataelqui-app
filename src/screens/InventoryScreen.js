@@ -47,6 +47,7 @@ const EditProductModal = ({ visible, hide, product, providers }) => {
   const [sku, setSku] = useState('');
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
+  const [brand, setBrand] = useState('');
   const [provider, setProvider] = useState('');
   const [location, setLocation] = useState('');
   const [showLocPicker, setShowLocPicker] = useState(false);
@@ -68,6 +69,7 @@ const EditProductModal = ({ visible, hide, product, providers }) => {
       setSku(product.sku || '');
       setName(product.name || '');
       setCategory(product.category || '');
+      setBrand(product.brand || '');
       setProvider(product.provider || '');
       setLocation(product.location || product.aisle || '');
       setStock(String(product.stock || product.quantity || ''));
@@ -91,7 +93,7 @@ const EditProductModal = ({ visible, hide, product, providers }) => {
     try {
       const productRef = doc(db, "products", product.id);
       await updateDoc(productRef, {
-        sku, name, category, provider,
+        sku, name, category, brand, provider,
         location, aisle: location,
         unitType,
         stock: finalStock,
@@ -150,6 +152,8 @@ const EditProductModal = ({ visible, hide, product, providers }) => {
             </Menu>
           </View>
         </View>
+        <Text style={styles.label}>Marca</Text>
+        <TextInput value={brand} onChangeText={setBrand} mode="outlined" style={styles.input} dense />
         <Text style={styles.label}>Nombre</Text>
         <TextInput value={name} onChangeText={setName} mode="outlined" style={styles.input} dense />
         <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -496,6 +500,8 @@ const CountDetailModal = ({ visible, hide, count }) => {
 
     const totalCounted = updatedItems.reduce((acc, curr) => acc + (curr.counted || 0), 0);
 
+    console.log("Saving Count Update:", { id: count.id, items: updatedItems, total: totalCounted });
+
     try {
       await updateDoc(doc(db, "counts", count.id), {
         items: updatedItems,
@@ -538,6 +544,7 @@ const CountDetailModal = ({ visible, hide, count }) => {
       setCountFormat('Unidad');
 
     } catch (e) {
+      console.error("Error saving count:", e);
       Alert.alert("Error", "No se pudo guardar: " + e.message);
     }
   };
@@ -870,7 +877,7 @@ const CreateCountModal = ({ visible, hide }) => {
       });
 
       const randomId = Math.floor(1000 + Math.random() * 9000);
-      await addDoc(collection(db, "counts"), {
+      const countData = {
         countId: `CNT-${randomId}`,
         worker: worker,
         aisle: aisle,
@@ -880,7 +887,10 @@ const CreateCountModal = ({ visible, hide }) => {
         counted: countedTotal,
         items: itemsSnapshot,
         origin: 'Móvil'
-      });
+      };
+      console.log("Creating New Count:", countData);
+
+      await addDoc(collection(db, "counts"), countData);
 
       // Instead of Alert, show Result Screen
       setResultData({
@@ -891,7 +901,7 @@ const CreateCountModal = ({ visible, hide }) => {
       });
       setStep('RESULT');
 
-    } catch (e) { Alert.alert("Error", e.message); } finally { setLoading(false); }
+    } catch (e) { console.error("Error creating count:", e); Alert.alert("Error", e.message); } finally { setLoading(false); }
   };
 
   // --- VIEW: RESULT SCREEN ---
@@ -1096,6 +1106,7 @@ const AddProductModal = ({ visible, hide, providers }) => {
   const [sku, setSku] = useState('');
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
+  const [brand, setBrand] = useState('');
   const [provider, setProvider] = useState('');
   const [location, setLocation] = useState('');
   const [stock, setStock] = useState('');
@@ -1138,7 +1149,7 @@ const AddProductModal = ({ visible, hide, providers }) => {
       }
 
       await addDoc(collection(db, "products"), {
-        sku, name, category, provider,
+        sku, name, category, brand, provider,
         location, aisle: location,
         unitType,
         stock: finalStock,
@@ -1205,7 +1216,7 @@ const AddProductModal = ({ visible, hide, providers }) => {
       }
 
       Alert.alert("Éxito", "Producto agregado correctamente.");
-      setSku(''); setName(''); setCategory(''); setProvider(''); setLocation('');
+      setSku(''); setName(''); setCategory(''); setBrand(''); setProvider(''); setLocation('');
       setStock(''); setMinStock(''); setUnitType('Unidad'); setNumBoxes(''); setUnitsPerBox('');
       setExpiryDate(new Date());
       hide();
@@ -1247,6 +1258,9 @@ const AddProductModal = ({ visible, hide, providers }) => {
               />
             </View>
           </View>
+
+          <Text style={styles.label}>Marca</Text>
+          <TextInput value={brand} onChangeText={setBrand} mode="outlined" placeholder="Ej: Selecta" style={styles.input} dense />
 
           <Text style={styles.label}>Nombre del Producto</Text>
           <TextInput value={name} onChangeText={setName} mode="outlined" placeholder="Ej: Harina Selecta 25kg" style={styles.input} dense />
@@ -1382,13 +1396,14 @@ function StockList() {
       </View>
       <ScrollView style={styles.scroll}>
         {filteredProducts.map((p) => {
-          const displayStock = p.stock !== undefined ? p.stock : p.quantity;
+          const displayStock = (p.stock !== undefined ? p.stock : p.quantity) || 0;
           const displayLoc = p.location || p.aisle || '-';
           return (
             <Card key={p.id} style={styles.card}>
               <Card.Content>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
                   <Text style={{ fontWeight: 'bold', fontSize: 16, flex: 1 }}>{p.name}</Text>
+                  <Chip compact style={{ backgroundColor: '#E0F7FA', height: 28, marginRight: 5 }} textStyle={{ fontSize: 10 }}>{p.brand || 'Sin Marca'}</Chip>
                   <Chip compact style={{ backgroundColor: '#E0F7FA', height: 28 }} textStyle={{ fontSize: 10 }}>{p.category || 'General'}</Chip>
                 </View>
                 <Divider style={{ marginBottom: 10 }} />
