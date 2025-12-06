@@ -3,8 +3,9 @@ import { View, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { Text, Card, Avatar, Button, IconButton, Chip } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { collection, query, onSnapshot } from 'firebase/firestore';
-import { db } from '../../firebaseConfig';
+import { collection, query, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { db, auth } from '../../firebaseConfig';
+import { onAuthStateChanged } from 'firebase/auth';
 
 export default function HomeScreen() {
     const navigation = useNavigation();
@@ -14,6 +15,8 @@ export default function HomeScreen() {
     const [totalStock, setTotalStock] = useState(0);
     const [expiryProjection, setExpiryProjection] = useState([0, 0, 0, 0]); // [Sem 1, Sem 2, Sem 3, Sem 4]
     const [rotation, setRotation] = useState(0);
+    const [userName, setUserName] = useState('');
+    const [userRole, setUserRole] = useState('');
 
     useEffect(() => {
         // 1. ALERTA MÁS CRÍTICA (FEFO), STOCK TOTAL Y PROYECCIÓN
@@ -105,7 +108,32 @@ export default function HomeScreen() {
             setRotation(totalOutputs);
         });
 
-        return () => { unsubProd(); unsubCounts(); unsubReturns(); unsubKardex(); };
+        // 5. USER DATA
+        const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                setUserName(user.displayName || 'Usuario');
+                try {
+                    const userDocRef = doc(db, "users", user.uid);
+                    const userDocSnap = await getDoc(userDocRef);
+                    if (userDocSnap.exists()) {
+                        const userData = userDocSnap.data();
+                        if (userData.name) setUserName(userData.name);
+                        if (userData.role) setUserRole(userData.role);
+                        else setUserRole('Usuario');
+                    } else {
+                        setUserRole('Usuario');
+                    }
+                } catch (error) {
+                    console.error("Error fetching user data:", error);
+                    setUserRole('Usuario');
+                }
+            } else {
+                setUserName('');
+                setUserRole('');
+            }
+        });
+
+        return () => { unsubProd(); unsubCounts(); unsubReturns(); unsubKardex(); unsubscribeAuth(); };
     }, []);
 
     // --- COMPONENTE INTERNO: GRÁFICO DE BARRAS ---
@@ -148,13 +176,13 @@ export default function HomeScreen() {
             <View style={styles.header}>
                 <View style={styles.headerContent}>
                     <TouchableOpacity onPress={() => navigation.openDrawer()}>
-                        <Avatar.Image size={45} source={{ uri: 'https://i.pravatar.cc/150?img=12' }} />
+                        <Avatar.Icon size={45} icon="account" style={{ backgroundColor: '#E0E0E0' }} />
                     </TouchableOpacity>
                     <View style={{ marginLeft: 15, flex: 1 }}>
-                        <Text variant="headlineSmall" style={styles.greeting}>Hola, Yohan</Text>
+                        <Text variant="headlineSmall" style={styles.greeting}>Hola, {userName}</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                             <MaterialCommunityIcons name="circle" size={10} color="#4CAF50" />
-                            <Text style={styles.role}> Supervisor de Bodega</Text>
+                            <Text style={styles.role}> {userRole}</Text>
                         </View>
                     </View>
                     <IconButton icon="bell-outline" size={28} onPress={() => navigation.navigate('Alertas')} />
