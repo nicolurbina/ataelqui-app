@@ -100,6 +100,23 @@ const EditProductModal = ({ visible, hide, product, providers }) => {
         unitsPerBox: unitType === 'Caja' ? (parseInt(unitsPerBox) || 0) : 0,
         updatedAt: new Date()
       });
+
+      // --- KARDEX LOGGING FOR MANUAL UPDATE ---
+      const oldStock = product.stock || 0;
+      const diff = finalStock - oldStock;
+
+      if (diff !== 0) {
+        await addDoc(collection(db, "kardex"), {
+          sku: sku,
+          productName: name,
+          type: diff > 0 ? "Entrada" : "Salida",
+          quantity: Math.abs(diff),
+          reason: "Ajuste Manual de Inventario",
+          date: new Date(),
+          user: "Admin"
+        });
+      }
+      // ----------------------------------------
       hide();
       Alert.alert("Éxito", "Producto actualizado.");
     } catch (e) { Alert.alert("Error", e.message); } finally { setLoading(false); }
@@ -1133,6 +1150,20 @@ const AddProductModal = ({ visible, hide, providers }) => {
         createdAt: new Date(),
         updatedAt: new Date()
       });
+
+      // --- KARDEX LOGGING FOR NEW PRODUCT ---
+      if (finalStock > 0) {
+        await addDoc(collection(db, "kardex"), {
+          sku: sku,
+          productName: name,
+          type: "Entrada",
+          quantity: finalStock,
+          reason: "Inventario Inicial",
+          date: new Date(),
+          user: "Admin"
+        });
+      }
+      // --------------------------------------
 
       // GENERATE PERSISTENT ALERTS
       const today = new Date();

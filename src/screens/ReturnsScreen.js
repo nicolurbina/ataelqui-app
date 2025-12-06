@@ -430,7 +430,7 @@ function ReturnsList({ statusFilter }) {
             }
           }
         }
-        Alert.alert("Aprobado", "Inventario y Mermas actualizados correctamente.");
+        Alert.alert("Aprobado", "Mermas actualizadas correctamente.");
       }
 
       await updateDoc(doc(db, "returns", id), { status: newStatus });
