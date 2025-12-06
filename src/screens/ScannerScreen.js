@@ -47,6 +47,7 @@ export default function ScannerScreen() {
   // Form Data
   const [currentSku, setCurrentSku] = useState('');
   const [name, setName] = useState('');
+  const [brand, setBrand] = useState('');
   const [category, setCategory] = useState('');
   const [provider, setProvider] = useState('');
   const [location, setLocation] = useState('');
@@ -91,6 +92,7 @@ export default function ScannerScreen() {
       if (!snapshot.empty) {
         const p = snapshot.docs[0].data();
         setName(p.name);
+        setBrand(p.brand || '');
         setCategory(p.category);
         setProvider(p.provider);
         setLocation(p.location);
@@ -99,7 +101,7 @@ export default function ScannerScreen() {
         if (stickyDate) setExpiryDate(stickyDate);
       } else {
         // New product
-        setName(''); setCategory(''); setProvider(''); setLocation(''); setMinStock('10');
+        setName(''); setBrand(''); setCategory(''); setProvider(''); setLocation(''); setMinStock('10');
         if (stickyDate) setExpiryDate(stickyDate);
       }
       setShowForm(true);
@@ -143,7 +145,7 @@ export default function ScannerScreen() {
 
       // GUARDAR (FORMATO HÍBRIDO APP + API)
       await addDoc(collection(db, "products"), {
-        sku: currentSku, name, category, provider,
+        sku: currentSku, name, brand, category, provider,
         location: location, // API usa location
         aisle: location,    // Guardamos aisle también por si acaso tu app vieja lo busca
 
@@ -241,6 +243,9 @@ export default function ScannerScreen() {
               />
             </View>
           </View>
+
+          <Text style={styles.label}>Marca</Text>
+          <TextInput value={brand} onChangeText={setBrand} mode="outlined" placeholder="Ej: Selecta" style={styles.input} dense />
 
           <Text style={styles.label}>Nombre del Producto</Text>
           <TextInput value={name} onChangeText={setName} mode="outlined" placeholder="Ej: Harina Selecta 25kg" style={styles.input} dense />
