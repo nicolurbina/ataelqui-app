@@ -7,6 +7,7 @@ import { createMaterialTopTabNavigator } from '@react-navigation/material-top-ta
 import { useNavigation } from '@react-navigation/native';
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, addDoc, deleteDoc, where, getDocs } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 // --- COMPONENTE REUTILIZABLE: SELECTION MODAL ---
 const SelectionModal = ({ visible, hide, title, items, onSelect, renderItem }) => {
