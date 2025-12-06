@@ -125,6 +125,18 @@ function NewReturnForm({ onReturnCreated }) {
         createdAt: new Date()
       });
 
+      // --- NOTIFICACIÓN DE NUEVA DEVOLUCIÓN ---
+      await addDoc(collection(db, "notifications"), {
+        title: 'Nueva Devolución',
+        desc: `Cliente: ${client}. Doc: ${docType} ${invoice}.`,
+        type: 'Devolución',
+        color: '#1976D2',
+        icon: 'truck-delivery',
+        date: new Date().toISOString().split('T')[0],
+        isSystem: true
+      });
+      // ----------------------------------------
+
       Alert.alert("Éxito", "Devolución registrada correctamente");
       setItems([]); setClient(''); setInvoice(''); setVehicle(''); setRoute(''); setDriver(''); setEvidence(null); setObservations('');
       if (onReturnCreated) onReturnCreated();
@@ -431,6 +443,23 @@ function ReturnsList({ statusFilter }) {
         }
         Alert.alert("Aprobado", "Mermas actualizadas correctamente.");
       }
+
+      // --- NOTIFICACIÓN DE APROBACIÓN ---
+      if (newStatus === 'Aprobado') {
+        const returnDoc = list.find(r => r.id === id);
+        if (returnDoc) {
+          await addDoc(collection(db, "notifications"), {
+            title: 'Devolución Aprobada',
+            desc: `La devolución de ${returnDoc.client} ha sido aprobada.`,
+            type: 'Devolución',
+            color: '#2E7D32',
+            icon: 'check-circle',
+            date: new Date().toISOString().split('T')[0],
+            isSystem: true
+          });
+        }
+      }
+      // ----------------------------------
 
       await updateDoc(doc(db, "returns", id), { status: newStatus });
     } catch (e) {

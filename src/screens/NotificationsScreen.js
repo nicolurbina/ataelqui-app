@@ -44,7 +44,7 @@ export default function NotificationsScreen() {
 
   const deleteAllSystemAlerts = async () => {
     Alert.alert(
-      "Borrar Alertas",
+      "Borrar Notificaciones",
       "¿Estás seguro de eliminar todas las notificaciones?",
       [
         { text: "Cancelar", style: "cancel" },

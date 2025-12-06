@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, onSnapshot, query } from 'firebase/firestore';
+import { collection, onSnapshot, query, doc, updateDoc } from 'firebase/firestore';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { db } from '../../firebaseConfig';
 
@@ -9,26 +9,11 @@ export const useNotifications = () => useContext(NotificationsContext);
 
 export const NotificationsProvider = ({ children }) => {
     const [productAlertsCount, setProductAlertsCount] = useState(0);
-    const [systemAlertsCount, setSystemAlertsCount] = useState(0);
-    const [seenCount, setSeenCount] = useState(0);
+    const [unreadSystemCount, setUnreadSystemCount] = useState(0);
+    const [systemAlerts, setSystemAlerts] = useState([]);
 
-    // Load seenCount from storage on mount
+    // 1. ALERTAS DE PRODUCTOS (Calculated locally)
     useEffect(() => {
-        const loadSeenCount = async () => {
-            try {
-                const savedCount = await AsyncStorage.getItem('notifications_seen_count');
-                if (savedCount !== null) {
-                    setSeenCount(parseInt(savedCount, 10));
-                }
-            } catch (e) {
-                console.error("Failed to load seen count", e);
-            }
-        };
-        loadSeenCount();
-    }, []);
-
-    useEffect(() => {
-        // 1. ALERTAS DE PRODUCTOS
         const qProducts = query(collection(db, "products"));
         const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
             let count = 0;
@@ -44,38 +29,46 @@ export const NotificationsProvider = ({ children }) => {
             });
             setProductAlertsCount(count);
         });
-
-        // 2. ALERTAS DE SISTEMA
-        const qAlerts = query(collection(db, "notifications"));
-        const unsubscribeAlerts = onSnapshot(qAlerts, (snapshot) => {
-            setSystemAlertsCount(snapshot.size);
-        });
-
-        return () => {
-            unsubscribeProducts();
-            unsubscribeAlerts();
-        };
+        return () => unsubscribeProducts();
     }, []);
 
-    const totalAlerts = productAlertsCount + systemAlertsCount;
-
-    // If total alerts decreased (deleted), update seenCount to avoid negative badge
+    // 2. ALERTAS DE SISTEMA (From Firestore)
     useEffect(() => {
-        if (totalAlerts < seenCount) {
-            setSeenCount(totalAlerts);
-            AsyncStorage.setItem('notifications_seen_count', totalAlerts.toString()).catch(console.error);
-        }
-    }, [totalAlerts, seenCount]);
+        const qAlerts = query(collection(db, "notifications"));
+        const unsubscribeAlerts = onSnapshot(qAlerts, (snapshot) => {
+            const alerts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setSystemAlerts(alerts);
+            // Count only unread
+            const unread = alerts.filter(a => !a.read).length;
+            setUnreadSystemCount(unread);
+        });
+        return () => unsubscribeAlerts();
+    }, []);
 
-    const badgeCount = Math.max(0, totalAlerts - seenCount);
+    // Badge = Unread System Alerts + Product Alerts (Product alerts are always "active" until resolved)
+    // To avoid persistent badge for product alerts, we could track "seen" for them too, but typically
+    // product alerts should persist until fixed. However, user wants "dynamic".
+    // Let's assume Product Alerts contribute to badge until fixed.
+    // OR: If user wants to clear badge, we can just use unreadSystemCount if product alerts are considered "dashboard info".
+    // Let's stick to: Badge = Unread System Alerts. Product alerts are shown in dashboard/list.
+    // If user wants product alerts to trigger badge, they should probably generate a Notification document.
+    // Current implementation: Badge = Unread System Notifications.
+
+    const badgeCount = unreadSystemCount;
 
     const markAsSeen = async () => {
-        setSeenCount(totalAlerts);
-        try {
-            await AsyncStorage.setItem('notifications_seen_count', totalAlerts.toString());
-        } catch (e) {
-            console.error("Failed to save seen count", e);
-        }
+        // Batch update unread system alerts to read: true
+        const unread = systemAlerts.filter(a => !a.read);
+        if (unread.length === 0) return;
+
+        unread.forEach(async (alert) => {
+            try {
+                const alertRef = doc(db, "notifications", alert.id);
+                await updateDoc(alertRef, { read: true });
+            } catch (e) {
+                console.error("Error marking as read", e);
+            }
+        });
     };
 
     return (

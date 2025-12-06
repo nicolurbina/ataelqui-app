@@ -185,7 +185,7 @@ export default function HomeScreen() {
                             <Text style={styles.role}> {userRole}</Text>
                         </View>
                     </View>
-                    <IconButton icon="bell-outline" size={28} onPress={() => navigation.navigate('Alertas')} />
+                    <IconButton icon="bell-outline" size={28} onPress={() => navigation.navigate('Notificaciones')} />
                 </View>
             </View>
 
@@ -204,7 +204,7 @@ export default function HomeScreen() {
                             </View>
                             <Text variant="titleMedium" style={{ fontWeight: 'bold' }}>Lote #{criticalAlert.sku} - {criticalAlert.name}</Text>
                             <Text style={{ color: '#D32F2F', fontWeight: 'bold', marginTop: 5, marginBottom: 15 }}>Vence en: {criticalAlert.days} Días</Text>
-                            <Button mode="contained" buttonColor="#D32F2F" style={{ borderRadius: 8 }} onPress={() => navigation.navigate('Alertas')}>Resolver Ahora</Button>
+                            <Button mode="contained" buttonColor="#D32F2F" style={{ borderRadius: 8 }} onPress={() => navigation.navigate('Notificaciones')}>Resolver Ahora</Button>
                         </Card.Content>
                     </Card>
                 ) : (
