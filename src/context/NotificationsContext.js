@@ -1,7 +1,7 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
-import { collection, query, onSnapshot } from 'firebase/firestore';
-import { db } from '../../firebaseConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { collection, onSnapshot, query } from 'firebase/firestore';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { db } from '../../firebaseConfig';
 
 const NotificationsContext = createContext();
 
@@ -46,7 +46,7 @@ export const NotificationsProvider = ({ children }) => {
         });
 
         // 2. ALERTAS DE SISTEMA
-        const qAlerts = query(collection(db, "general_alerts"));
+        const qAlerts = query(collection(db, "notifications"));
         const unsubscribeAlerts = onSnapshot(qAlerts, (snapshot) => {
             setSystemAlertsCount(snapshot.size);
         });

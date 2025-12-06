@@ -312,7 +312,7 @@ const ReportWasteModal = ({ visible, hide, product, products }) => {
       // Check for Low Stock
       const minStock = selectedProduct.minStock || 10;
       if (newStock <= minStock) {
-        await addDoc(collection(db, "general_alerts"), {
+        await addDoc(collection(db, "notifications"), {
           title: 'Quiebre de Stock',
           desc: `El producto ${selectedProduct.name} ha alcanzado el nivel crítico. Stock actual: ${newStock}.`,
           type: 'Stock',
@@ -515,7 +515,7 @@ const CountDetailModal = ({ visible, hide, count }) => {
       }
 
       if (diff !== 0) {
-        await addDoc(collection(db, "general_alerts"), {
+        await addDoc(collection(db, "notifications"), {
           title: `Discrepancia en ${currentItem.name}`,
           desc: `El conteo físico no coincide con el sistema.`,
           type: 'Discrepancia',
@@ -933,7 +933,7 @@ const CreateCountModal = ({ visible, hide }) => {
             // Check for discrepancy and alert
             const diff = resultData.counted - resultData.expected;
             if (diff !== 0) {
-              await addDoc(collection(db, "general_alerts"), {
+              await addDoc(collection(db, "notifications"), {
                 title: `Discrepancia en Conteo ${resultData.countId}`,
                 desc: `El conteo físico no coincide con el sistema.`,
                 type: 'Discrepancia',
@@ -1170,7 +1170,7 @@ const AddProductModal = ({ visible, hide, providers }) => {
       const today = new Date();
       // 1. Stock
       if (finalStock <= (parseInt(minStock) || 10)) {
-        await addDoc(collection(db, "general_alerts"), {
+        await addDoc(collection(db, "notifications"), {
           title: 'Stock Crítico',
           desc: `Quedan solo ${finalStock} unidades de ${name}.`,
           type: 'Stock',
@@ -1183,7 +1183,7 @@ const AddProductModal = ({ visible, hide, providers }) => {
       // 2. Expiry
       const diffDays = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
       if (diffDays < 0) {
-        await addDoc(collection(db, "general_alerts"), {
+        await addDoc(collection(db, "notifications"), {
           title: 'Producto Vencido',
           desc: `${name} venció hace ${Math.abs(diffDays)} días.`,
           type: 'FEFO',
@@ -1193,7 +1193,7 @@ const AddProductModal = ({ visible, hide, providers }) => {
           isSystem: true
         });
       } else if (diffDays <= 7) {
-        await addDoc(collection(db, "general_alerts"), {
+        await addDoc(collection(db, "notifications"), {
           title: 'Riesgo Vencimiento',
           desc: `${name} vence en ${diffDays} días.`,
           type: 'FEFO',

@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Alert } from 'react-native';
-import { Text, Card, Chip, Searchbar, ActivityIndicator, FAB, Divider, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { collection, onSnapshot, query, addDoc, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import { useFocusEffect } from '@react-navigation/native';
+import { collection, deleteDoc, doc, onSnapshot, query } from 'firebase/firestore';
+import React, { useEffect, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Card, Chip, Divider, IconButton, Searchbar, Text } from 'react-native-paper';
 import { db } from '../../firebaseConfig';
 import { useNotifications } from '../context/NotificationsContext';
-import { useFocusEffect } from '@react-navigation/native';
 
 export default function NotificationsScreen() {
   const [systemAlerts, setSystemAlerts] = useState([]);
@@ -22,7 +22,7 @@ export default function NotificationsScreen() {
 
   useEffect(() => {
     // ONLY SYSTEM ALERTS (Persistent)
-    const qAlerts = query(collection(db, "general_alerts"));
+    const qAlerts = query(collection(db, "notifications"));
     const unsubscribeAlerts = onSnapshot(qAlerts, (snapshot) => {
       const alerts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), isSystem: true }));
       // Sort client-side: Newest first
@@ -39,7 +39,7 @@ export default function NotificationsScreen() {
   }, []);
 
   const deleteAlert = async (alert) => {
-    try { await deleteDoc(doc(db, "general_alerts", alert.id)); } catch (e) { console.log(e); }
+    try { await deleteDoc(doc(db, "notifications", alert.id)); } catch (e) { console.log(e); }
   };
 
   const deleteAllSystemAlerts = async () => {
@@ -53,7 +53,7 @@ export default function NotificationsScreen() {
           style: "destructive",
           onPress: async () => {
             systemAlerts.forEach(a => {
-              deleteDoc(doc(db, "general_alerts", a.id));
+              deleteDoc(doc(db, "notifications", a.id));
             });
           }
         }
@@ -63,7 +63,7 @@ export default function NotificationsScreen() {
 
   const filteredAlerts = systemAlerts.filter(alert => {
     const matchesType = filter === 'Todas' || alert.type === filter;
-    const matchesSearch = alert.desc.toLowerCase().includes(searchQuery.toLowerCase()) || alert.title.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = (alert.desc?.toLowerCase() || '').includes(searchQuery.toLowerCase()) || (alert.title?.toLowerCase() || '').includes(searchQuery.toLowerCase());
     return matchesType && matchesSearch;
   });
 
@@ -118,14 +118,25 @@ export default function NotificationsScreen() {
                 {/* Content Column */}
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <View>
+                    <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#4527A0', marginBottom: 2 }}>{alert.title}</Text>
                       <Text style={{ fontSize: 12, color: '#666' }}>{alert.type} • {dateStr} {timeStr}</Text>
                     </View>
-                    <IconButton icon="close" size={20} style={{ margin: 0, marginTop: -5, marginRight: -10 }} onPress={() => deleteAlert(alert)} />
+                    <IconButton icon="check-circle" iconColor="#2E7D32" size={24} style={{ margin: 0, marginTop: -5, marginRight: -10 }} onPress={() => deleteAlert(alert)} />
                   </View>
 
                   <Text style={{ marginTop: 8, color: '#444', fontSize: 13 }}>{alert.desc}</Text>
+
+                  {/* Extra Details (Web/Mobile) */}
+                  {(alert.productName || alert.producto || alert.sku || alert.batch || alert.lote || alert.quantity || alert.cantidad) && (
+                    <View style={{ marginTop: 8, padding: 8, backgroundColor: '#F5F5F5', borderRadius: 5 }}>
+                      {(alert.productName || alert.producto) && <Text style={{ fontSize: 12 }}>📦 <Text style={{ fontWeight: 'bold' }}>Producto:</Text> {alert.productName || alert.producto}</Text>}
+                      {alert.sku && <Text style={{ fontSize: 12 }}>🔖 <Text style={{ fontWeight: 'bold' }}>SKU:</Text> {alert.sku}</Text>}
+                      {(alert.batch || alert.lote) && <Text style={{ fontSize: 12 }}>🗓 <Text style={{ fontWeight: 'bold' }}>Lote:</Text> {alert.batch || alert.lote}</Text>}
+                      {(alert.quantity || alert.cantidad) && <Text style={{ fontSize: 12 }}>🔢 <Text style={{ fontWeight: 'bold' }}>Cantidad:</Text> {alert.quantity || alert.cantidad}</Text>}
+                      {(alert.provider || alert.proveedor) && <Text style={{ fontSize: 12 }}>🚛 <Text style={{ fontWeight: 'bold' }}>Proveedor:</Text> {alert.provider || alert.proveedor}</Text>}
+                    </View>
+                  )}
 
                   {/* Discrepancy Details Box */}
                   {alert.type === 'Discrepancia' && alert.expected !== undefined && (

@@ -386,7 +386,7 @@ function ReturnsList({ statusFilter }) {
               lot: lot
             });
 
-            await addDoc(collection(db, "general_alerts"), {
+            await addDoc(collection(db, "notifications"), {
               title: 'Merma por Devolución',
               desc: `Producto: ${item.productName}. Cantidad: ${item.quantity}. Causa: ${item.reason}.`,
               type: 'Merma',

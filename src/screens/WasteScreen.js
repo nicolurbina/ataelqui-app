@@ -117,7 +117,7 @@ export default function WasteScreen() {
       });
 
       // 5. Alerts
-      await addDoc(collection(db, "general_alerts"), {
+      await addDoc(collection(db, "notifications"), {
         title: 'Merma Registrada',
         desc: `Producto: ${selectedProduct.name}. Cantidad: ${deduction}. Causa: ${cause}.`,
         type: 'Merma',
@@ -130,7 +130,7 @@ export default function WasteScreen() {
       // Low Stock Alert
       const minStock = selectedProduct.minStock || 10;
       if ((currentStock - deduction) <= minStock) {
-        await addDoc(collection(db, "general_alerts"), {
+        await addDoc(collection(db, "notifications"), {
           title: 'Quiebre de Stock',
           desc: `El producto ${selectedProduct.name} ha alcanzado el nivel crítico. Stock actual: ${currentStock - deduction}.`,
           type: 'Stock',

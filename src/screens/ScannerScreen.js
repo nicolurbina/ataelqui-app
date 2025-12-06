@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Alert, ScrollView, TouchableOpacity } from 'react-native';
-import { Text, Button, TextInput, Portal, Modal, ActivityIndicator, RadioButton, List, Divider, IconButton } from 'react-native-paper';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { collection, addDoc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '../../firebaseConfig';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { addDoc, collection, getDocs, onSnapshot, query, where } from 'firebase/firestore';
+import React, { useEffect, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Button, Divider, IconButton, List, Modal, Portal, RadioButton, Text, TextInput } from 'react-native-paper';
+import { db } from '../../firebaseConfig';
 
 // --- COMPONENTE REUTILIZABLE: SELECTION MODAL ---
 const SelectionModal = ({ visible, hide, title, items, onSelect, renderItem }) => {
@@ -166,7 +165,7 @@ export default function ScannerScreen() {
       const today = new Date();
       // 1. Stock
       if (totalQty <= 10) {
-        await addDoc(collection(db, "general_alerts"), {
+        await addDoc(collection(db, "notifications"), {
           title: 'Stock Crítico',
           desc: `Quedan solo ${totalQty} unidades de ${name}.`,
           type: 'Stock',
@@ -180,7 +179,7 @@ export default function ScannerScreen() {
       const expDate = new Date(dateString); // dateString is YYYY-MM-DD
       const diffDays = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
       if (diffDays < 0) {
-        await addDoc(collection(db, "general_alerts"), {
+        await addDoc(collection(db, "notifications"), {
           title: 'Producto Vencido',
           desc: `${name} venció hace ${Math.abs(diffDays)} días.`,
           type: 'FEFO',
@@ -190,7 +189,7 @@ export default function ScannerScreen() {
           isSystem: true
         });
       } else if (diffDays <= 7) {
-        await addDoc(collection(db, "general_alerts"), {
+        await addDoc(collection(db, "notifications"), {
           title: 'Riesgo Vencimiento',
           desc: `${name} vence en ${diffDays} días.`,
           type: 'FEFO',
