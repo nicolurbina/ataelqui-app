@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Alert, Modal as NativeModal, TouchableOpacity, Keyboard, TouchableWithoutFeedback } from 'react-native';
-import { Text, Card, Button, FAB, TextInput, IconButton, Portal, Modal, List } from 'react-native-paper';
-import { collection, addDoc, query, where, getDocs, updateDoc, doc, onSnapshot, orderBy } from 'firebase/firestore';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { addDoc, collection, doc, getDocs, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
+import { Alert, Keyboard, ScrollView, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { Button, Card, FAB, IconButton, List, Modal, Portal, Text, TextInput } from 'react-native-paper';
 import { db } from '../../firebaseConfig';
 
 export default function WasteScreen() {
@@ -33,7 +32,7 @@ export default function WasteScreen() {
 
   useEffect(() => {
     // 1. Listen to Waste History
-    const q = query(collection(db, "waste"), orderBy("date", "desc"));
+    const q = query(collection(db, "mermas"), orderBy("date", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setWastes(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     });
@@ -95,7 +94,7 @@ export default function WasteScreen() {
       await updateDoc(doc(db, "products", selectedProduct.id), { stock: currentStock - deduction });
 
       // 3. Record Waste
-      await addDoc(collection(db, "waste"), {
+      await addDoc(collection(db, "mermas"), {
         sku: selectedProduct.sku,
         productName: selectedProduct.name,
         quantity: deduction,

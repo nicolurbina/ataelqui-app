@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Alert, TouchableOpacity, Image, useWindowDimensions } from 'react-native';
-import { Text, TextInput, Button, Card, Divider, IconButton, Modal, Portal, RadioButton, List, Chip } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
-import { collection, addDoc, query, where, getDocs, updateDoc, doc, onSnapshot, orderBy } from 'firebase/firestore';
-import { db, auth } from '../../firebaseConfig';
+import { addDoc, collection, doc, getDocs, onSnapshot, orderBy, query, updateDoc, where } from 'firebase/firestore';
+import React, { useEffect, useState } from 'react';
+import { Alert, Image, ScrollView, StyleSheet, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { Button, Card, Chip, Divider, IconButton, List, Modal, Portal, RadioButton, Text, TextInput } from 'react-native-paper';
+import { db } from '../../firebaseConfig';
 
 // --- CONSTANTS ---
 const DOC_TYPES = ["Factura", "Boleta", "Guía de Despacho"];
@@ -363,7 +363,6 @@ function ReturnsList({ statusFilter }) {
 
           if (isWaste) {
             // --- CASE 1: WASTE (MERMA) ---
-            // NO DESCONTAMOS STOCK (El producto ya salió y vuelve malo)
             const q = query(collection(db, "products"), where("sku", "==", item.sku));
             const snapshot = await getDocs(q);
 
@@ -376,7 +375,7 @@ function ReturnsList({ statusFilter }) {
               lot = productData.lot || 'N/A';
             }
 
-            await addDoc(collection(db, "waste"), {
+            await addDoc(collection(db, "mermas"), {
               sku: item.sku,
               productName: item.productName,
               quantity: item.quantity,

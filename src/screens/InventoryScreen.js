@@ -1,13 +1,13 @@
-﻿import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'react-native';
-import { Card, Text, Chip, IconButton, Portal, Modal, TextInput, Button, Searchbar, RadioButton, FAB, Menu, Divider, List } from 'react-native-paper';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+﻿import { MaterialCommunityIcons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { useNavigation } from '@react-navigation/native';
-import { collection, onSnapshot, query, orderBy, doc, updateDoc, addDoc, deleteDoc, where, getDocs } from 'firebase/firestore';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { addDoc, collection, deleteDoc, doc, getDocs, onSnapshot, orderBy, query, updateDoc, where } from 'firebase/firestore';
+import React, { useEffect, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Button, Card, Chip, Divider, FAB, IconButton, List, Menu, Modal, Portal, RadioButton, Searchbar, Text, TextInput } from 'react-native-paper';
 import { db } from '../../firebaseConfig';
-import DateTimePicker from '@react-native-community/datetimepicker';
 
 // --- COMPONENTE REUTILIZABLE: SELECTION MODAL ---
 const SelectionModal = ({ visible, hide, title, items, onSelect, renderItem }) => {
@@ -288,7 +288,7 @@ const ReportWasteModal = ({ visible, hide, product, products }) => {
       await updateDoc(doc(db, "products", selectedProduct.id), { stock: newStock, quantity: newStock });
 
       // Registrar en Waste
-      await addDoc(collection(db, "waste"), {
+      await addDoc(collection(db, "mermas"), {
         sku: selectedProduct.sku,
         productName: selectedProduct.name,
         quantity: deduction,
