@@ -1,0 +1,56 @@
+{
+  "sample": [
+    {
+      "id": "HMEKPEthUGignGWePMfZ",
+      "status": "Disponible",
+      "createdAt": "2025-12-06T19:18:23.908Z",
+      "initialQuantity": 50,
+      "warehouse": "Múltiple",
+      "batch": "Lote Inicial",
+      "entryDate": "2025-12-06T19:18:23.908Z",
+      "quantity": 50,
+      "unitCost": 0,
+      "expiryDate": null,
+      "productId": "31Kf7wKlyfyQ0MLL4o0h",
+      "sku": "7506195144947",
+      "productName": "Harina"
+    },
+    {
+      "id": "LuFO3UyHt5O5DBCvG55p",
+      "quantity": 0,
+      "initialQuantity": 50,
+      "unitCost": 0,
+      "expiryDate": null,
+      "productId": "31Kf7wKlyfyQ0MLL4o0h",
+      "createdAt": "2025-12-06T19:18:23.910Z",
+      "entryDate": "2025-12-06T19:18:23.910Z",
+      "sku": "7506195144947",
+      "productName": "Harina",
+      "warehouse": "Múltiple",
+      "status": "Disponible",
+      "batch": "Lote Inicial"
+    },
+    {
+      "id": "niVLjzSPxn8xY079I5Nv",
+      "createdAt": "2025-12-06T20:27:34.839Z",
+      "expiryDate": "2025-12-12",
+      "batch": "123",
+      "productName": "Manjar",
+      "status": "Disponible",
+      "quantity": 30,
+      "productId": "efbO4zGS86WJTE9tGuwQ"
+    }
+  ],
+  "manjarBatches": [
+    {
+      "id": "niVLjzSPxn8xY079I5Nv",
+      "createdAt": "2025-12-06T20:27:34.839Z",
+      "expiryDate": "2025-12-12",
+      "batch": "123",
+      "productName": "Manjar",
+      "status": "Disponible",
+      "quantity": 30,
+      "productId": "efbO4zGS86WJTE9tGuwQ"
+    }
+  ]
+}

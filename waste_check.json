@@ -1,0 +1,37 @@
+{
+  "wasteCount": 1,
+  "mermasCount": 1,
+  "wasteSamples": [
+    {
+      "quantity": 10,
+      "sku": "",
+      "date": {
+        "type": "firestore/timestamp/1.0",
+        "seconds": 1765051955,
+        "nanoseconds": 587000000
+      },
+      "cost": 2451,
+      "user": "Gerencia",
+      "lot": "Lote Inicial",
+      "productId": "efbO4zGS86WJTE9tGuwQ",
+      "productName": "Manjar",
+      "cause": "Vencido"
+    }
+  ],
+  "mermasSamples": [
+    {
+      "origin": "Devolución 5g18AyvoyTfqsli0JcLw",
+      "cost": 0,
+      "date": {
+        "type": "firestore/timestamp/1.0",
+        "seconds": 1765008579,
+        "nanoseconds": 530000000
+      },
+      "productName": "Harina",
+      "sku": "7506195144947",
+      "cause": "Envase Dañado",
+      "lot": "N/A",
+      "quantity": 10
+    }
+  ]
+}

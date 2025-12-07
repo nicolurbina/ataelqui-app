@@ -1,0 +1,32 @@
+{
+  "inventory": [
+    {
+      "id": "niVLjzSPxn8xY079I5Nv",
+      "expiryDate": "2025-12-12",
+      "batch": "123",
+      "quantity": 30,
+      "productName": "Manjar",
+      "status": "Disponible",
+      "productId": "efbO4zGS86WJTE9tGuwQ",
+      "createdAt": "2025-12-06T20:27:34.839Z"
+    }
+  ],
+  "waste": [
+    {
+      "id": "gL5cTBM9K0eujkDq6tA1",
+      "quantity": 10,
+      "cost": 2451,
+      "date": {
+        "type": "firestore/timestamp/1.0",
+        "seconds": 1765051955,
+        "nanoseconds": 587000000
+      },
+      "productName": "Manjar",
+      "productId": "efbO4zGS86WJTE9tGuwQ",
+      "sku": "",
+      "cause": "Vencido",
+      "lot": "Lote Inicial",
+      "user": "Gerencia"
+    }
+  ]
+}

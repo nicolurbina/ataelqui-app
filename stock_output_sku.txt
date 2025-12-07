@@ -1,0 +1,32 @@
+[
+  {
+    "id": "31Kf7wKlyfyQ0MLL4o0h",
+    "updatedAt": "2025-12-06T19:26:36.899Z",
+    "brand": "Selecta",
+    "provider": "andes",
+    "expirationDate": "",
+    "unitType": "unit",
+    "warehouse": "Múltiple",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1765007223,
+      "nanoseconds": 331000000
+    },
+    "quantity": 0,
+    "category": "Insumos",
+    "name": "Harina",
+    "expiryDate": "2025-12-25",
+    "location": "Bodega 1",
+    "batchNumber": "Lote Inicial",
+    "sku": "7506195144947",
+    "totalStock": 50,
+    "aisle": "Bodega 1",
+    "status": "Saludable",
+    "unitsPerBox": "",
+    "numBoxes": 0,
+    "stock": 50,
+    "minStock": 10,
+    "format": "unidad",
+    "boxCount": ""
+  }
+]

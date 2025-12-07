@@ -19,6 +19,11 @@ export default function CustomDrawer(props) {
         }
     };
 
+    // Derive name from email
+    const user = auth.currentUser;
+    const displayName = user?.email ? user.email.split('@')[0] : 'Usuario';
+    const formattedName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+
     return (
         <View style={{ flex: 1 }}>
             <DrawerContentScrollView
@@ -29,13 +34,13 @@ export default function CustomDrawer(props) {
                 <View style={styles.header}>
                     <View style={styles.profileRow}>
                         <Avatar.Image
-                            source={{ uri: 'https://i.pravatar.cc/150?img=12' }}
+                            source={{ uri: `https://ui-avatars.com/api/?name=${formattedName}&background=random&color=fff` }}
                             size={50}
                             style={styles.avatar}
                         />
                         <View style={styles.infoCol}>
-                            <Text style={styles.name}>Yohan</Text>
-                            <Text style={styles.id}>Supervisor ID: 8821</Text>
+                            <Text style={styles.name}>{formattedName}</Text>
+                            <Text style={styles.id}>{user?.email || 'Invitado'}</Text>
                         </View>
                     </View>
 

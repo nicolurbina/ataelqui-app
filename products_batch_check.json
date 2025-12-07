@@ -1,0 +1,32 @@
+{
+  "manjar": {
+    "id": "efbO4zGS86WJTE9tGuwQ",
+    "unitType": "unit",
+    "unitsPerBox": "",
+    "status": "Saludable",
+    "stock": 0,
+    "aisle": "",
+    "updatedAt": "2025-12-06T20:11:24.046Z",
+    "batchNumber": "Lote Inicial",
+    "minStock": 60,
+    "location": "",
+    "numBoxes": 0,
+    "cost": 2451,
+    "createdAt": "2025-12-06T19:13:57.245Z",
+    "quantity": 0,
+    "totalStock": 120,
+    "sku": "50126",
+    "provider": "Nestle Chile S.A",
+    "name": "Manjar",
+    "brand": "Nestle",
+    "category": "Repostería",
+    "warehouse": "Múltiple",
+    "expirationDate": "",
+    "price": 3500,
+    "boxCount": ""
+  },
+  "batchesCollectionCount": 0,
+  "sampleBatch": null,
+  "batchesSubCollectionCount": 0,
+  "sampleSubBatch": null
+}

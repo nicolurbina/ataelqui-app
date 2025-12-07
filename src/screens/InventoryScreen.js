@@ -72,7 +72,7 @@ const EditProductModal = ({ visible, hide, product, providers }) => {
       setBrand(product.brand || '');
       setProvider(product.provider || '');
       setLocation(product.location || product.aisle || '');
-      setStock(String(product.stock || product.quantity || ''));
+      setStock(String(product.totalStock !== undefined ? product.totalStock : (product.stock || product.quantity || '')));
       setMinStock(String(product.minStock || '10'));
       setUnitType(product.unitType || 'Unidad');
       setNumBoxes(String(product.numBoxes || ''));
@@ -96,6 +96,7 @@ const EditProductModal = ({ visible, hide, product, providers }) => {
         sku, name, category, brand, provider,
         location, aisle: location,
         unitType,
+        totalStock: finalStock, // Update totalStock
         stock: finalStock,
         quantity: finalStock,
         minStock: parseInt(minStock) || 0,
@@ -292,7 +293,7 @@ const ReportWasteModal = ({ visible, hide, product, products }) => {
       await updateDoc(doc(db, "products", selectedProduct.id), { stock: newStock, quantity: newStock });
 
       // Registrar en Waste
-      await addDoc(collection(db, "mermas"), {
+      await addDoc(collection(db, "waste"), {
         sku: selectedProduct.sku,
         productName: selectedProduct.name,
         quantity: deduction,
@@ -1396,7 +1397,7 @@ function StockList() {
       </View>
       <ScrollView style={styles.scroll}>
         {filteredProducts.map((p) => {
-          const displayStock = (p.stock !== undefined ? p.stock : p.quantity) || 0;
+          const displayStock = (p.totalStock !== undefined ? p.totalStock : (p.stock !== undefined ? p.stock : p.quantity)) || 0;
           const displayLoc = p.location || p.aisle || '-';
           return (
             <Card key={p.id} style={styles.card}>
