@@ -15,52 +15,24 @@ export default function HomeScreen() {
     const [totalStock, setTotalStock] = useState(0);
     const [expiryProjection, setExpiryProjection] = useState([0, 0, 0, 0]); // [Sem 1, Sem 2, Sem 3, Sem 4]
     const [rotation, setRotation] = useState(0);
-    const [userName, setUserName] = useState('');
-    const [userRole, setUserRole] = useState('');
+    const [userData, setUserData] = useState({ name: '', role: '', photoURL: null });
+    const [rawProducts, setRawProducts] = useState([]);
+    const [rawInventory, setRawInventory] = useState([]);
 
     useEffect(() => {
-        // 1. ALERTA MÁS CRÍTICA (FEFO), STOCK TOTAL Y PROYECCIÓN
+        // 1. PRODUCTS LISTENER
         const qProducts = query(collection(db, "products"));
         const unsubProd = onSnapshot(qProducts, (snapshot) => {
-            let topAlert = null;
-            let minDiff = Infinity;
-            let stockSum = 0;
-            let projection = [0, 0, 0, 0];
-            const today = new Date();
-
-            snapshot.docs.forEach(doc => {
-                const p = doc.data();
-
-                // Calculo Stock Total
-                if (p.stock) stockSum += parseInt(p.stock);
-
-                // Calculo Alerta FEFO y Proyección
-                if (p.expiryDate) {
-                    const exp = new Date(p.expiryDate);
-                    const diffTime = exp - today;
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-                    // Alerta Crítica (<= 5 días)
-                    if (diffDays <= 5 && diffDays < minDiff) {
-                        minDiff = diffDays;
-                        topAlert = { id: doc.id, name: p.name, sku: p.sku, days: diffDays, category: p.category };
-                    }
-
-                    // Proyección 30 días (Semanas)
-                    if (diffDays >= 0 && diffDays <= 30) {
-                        if (diffDays <= 7) projection[0]++;
-                        else if (diffDays <= 14) projection[1]++;
-                        else if (diffDays <= 21) projection[2]++;
-                        else projection[3]++;
-                    }
-                }
-            });
-            setCriticalAlert(topAlert);
-            setTotalStock(stockSum);
-            setExpiryProjection(projection);
+            setRawProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
 
-        // 2. EXACTITUD INVENTARIO
+        // 2. INVENTORY (LOTS) LISTENER
+        const qInventory = query(collection(db, "inventory"));
+        const unsubInventory = onSnapshot(qInventory, (snapshot) => {
+            setRawInventory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+
+        // 3. EXACTITUD INVENTARIO (Existing logic)
         const qCounts = query(collection(db, "counts"));
         const unsubCounts = onSnapshot(qCounts, (snapshot) => {
             if (snapshot.empty) { setAccuracy(100); return; }
@@ -81,13 +53,13 @@ export default function HomeScreen() {
             }
         });
 
-        // 3. TAREAS PENDIENTES
+        // 4. TAREAS PENDIENTES (Existing logic)
         const qReturns = query(collection(db, "returns"));
         const unsubReturns = onSnapshot(qReturns, (snap) => {
             setTasksCount(snap.docs.filter(d => d.data().status === 'Pendiente').length);
         });
 
-        // 4. ROTACIÓN (NUEVO)
+        // 5. ROTACIÓN (Existing logic)
         const qKardex = query(collection(db, "kardex"));
         const unsubKardex = onSnapshot(qKardex, (snapshot) => {
             let totalOutputs = 0;
@@ -97,7 +69,6 @@ export default function HomeScreen() {
 
             snapshot.docs.forEach(doc => {
                 const k = doc.data();
-                // Consideramos solo salidas en los últimos 30 días
                 if (k.type === 'Salida' && k.date) {
                     const kDate = k.date.toDate ? k.date.toDate() : new Date(k.date);
                     if (kDate >= thirtyDaysAgo) {
@@ -108,33 +79,97 @@ export default function HomeScreen() {
             setRotation(totalOutputs);
         });
 
-        // 5. USER DATA
+        // 6. USER DATA (Updated logic)
         const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
             if (user) {
-                setUserName(user.displayName || 'Usuario');
+                let newData = { name: user.displayName || 'Usuario', role: 'Usuario', photoURL: null };
+
                 try {
                     const userDocRef = doc(db, "users", user.uid);
-                    const userDocSnap = await getDoc(userDocRef);
-                    if (userDocSnap.exists()) {
-                        const userData = userDocSnap.data();
-                        if (userData.name) setUserName(userData.name);
-                        if (userData.role) setUserRole(userData.role);
-                        else setUserRole('Usuario');
-                    } else {
-                        setUserRole('Usuario');
-                    }
+                    // Use onSnapshot for real-time profile updates (e.g. image change)
+                    const unsubUser = onSnapshot(userDocRef, (docSnap) => {
+                        if (docSnap.exists()) {
+                            const data = docSnap.data();
+                            setUserData({
+                                name: data.name || user.displayName || 'Usuario',
+                                role: data.role || 'Usuario',
+                                photoURL: data.photoURL || null
+                            });
+                        }
+                    });
+                    // Store unsubscribe function if needed, but for now we just let it accept updates
+                    // Ideally we'd add this to the cleanup function list
                 } catch (error) {
                     console.error("Error fetching user data:", error);
-                    setUserRole('Usuario');
+                    setUserData(newData);
                 }
             } else {
-                setUserName('');
-                setUserRole('');
+                setUserData({ name: '', role: '', photoURL: null });
             }
         });
 
-        return () => { unsubProd(); unsubCounts(); unsubReturns(); unsubKardex(); unsubscribeAuth(); };
+        return () => { unsubProd(); unsubInventory(); unsubCounts(); unsubReturns(); unsubKardex(); unsubscribeAuth(); };
     }, []);
+
+
+    // --- EFFECT: CALCULATE DASHBOARD METRICS ---
+    useEffect(() => {
+        let topAlert = null;
+        let minDiff = Infinity;
+        let stockSum = 0;
+        let projection = [0, 0, 0, 0];
+        const today = new Date();
+
+        // Helper to process expiry
+        const processExpiry = (dateStr, name, sku, category, sourceId) => {
+            if (!dateStr) return;
+            // Handle Firestore Timestamp or Date String
+            const exp = dateStr.toDate ? dateStr.toDate() : new Date(dateStr);
+            if (isNaN(exp.getTime())) return;
+
+            const diffTime = exp.getTime() - today.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            // Alerta Crítica (<= 7 días - Expanded from 5 for better visibility)
+            if (diffDays <= 7 && diffDays < minDiff) {
+                minDiff = diffDays;
+                topAlert = { id: sourceId, name: name, sku: sku, days: diffDays, category: category };
+            }
+
+            // Proyección 30 días
+            if (diffDays >= 0 && diffDays <= 30) {
+                if (diffDays <= 7) projection[0]++;
+                else if (diffDays <= 14) projection[1]++;
+                else if (diffDays <= 21) projection[2]++;
+                else projection[3]++;
+            }
+        };
+
+        // 1. Process Products (Direct Expiry & Stock)
+        rawProducts.forEach(p => {
+            // Stock Logic
+            if (p.stock) stockSum += parseInt(p.stock);
+            else if (p.totalStock) stockSum += parseInt(p.totalStock);
+            else if (p.quantity) stockSum += parseInt(p.quantity);
+
+            // Expiry Logic (Direct Product Date)
+            processExpiry(p.expiryDate, p.name, p.sku, p.category, p.id);
+        });
+
+        // 2. Process Inventory (Lots Expiry)
+        rawInventory.forEach(lot => {
+            // We use lot data for Expiry, linking back to product name if possible
+            // Note: lot.productName usually exists. If not, we might need to look up in rawProducts (optional)
+            const name = lot.productName || lot.name || 'Producto Desconocido';
+            const sku = lot.sku || lot.batch || 'Lote';
+            processExpiry(lot.expiryDate, name, sku, 'Lote', lot.id);
+        });
+
+        setCriticalAlert(topAlert);
+        setTotalStock(stockSum);
+        setExpiryProjection(projection);
+
+    }, [rawProducts, rawInventory]);
 
     // --- COMPONENTE INTERNO: GRÁFICO DE BARRAS ---
     const ExpiryChart = ({ data }) => {
@@ -176,13 +211,17 @@ export default function HomeScreen() {
             <View style={styles.header}>
                 <View style={styles.headerContent}>
                     <TouchableOpacity onPress={() => navigation.openDrawer()}>
-                        <Avatar.Icon size={45} icon="account" style={{ backgroundColor: '#E0E0E0' }} />
+                        {userData.photoURL ? (
+                            <Avatar.Image size={45} source={{ uri: userData.photoURL }} />
+                        ) : (
+                            <Avatar.Icon size={45} icon="account" style={{ backgroundColor: '#E0E0E0' }} />
+                        )}
                     </TouchableOpacity>
                     <View style={{ marginLeft: 15, flex: 1 }}>
-                        <Text variant="headlineSmall" style={styles.greeting}>Hola, {userName}</Text>
+                        <Text variant="headlineSmall" style={styles.greeting}>Hola, {userData.name}</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                             <MaterialCommunityIcons name="circle" size={10} color="#4CAF50" />
-                            <Text style={styles.role}> {userRole}</Text>
+                            <Text style={styles.role}> {userData.role}</Text>
                         </View>
                     </View>
                     <IconButton icon="bell-outline" size={28} onPress={() => navigation.navigate('Notificaciones')} />

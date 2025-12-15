@@ -83,6 +83,28 @@ const EditProductModal = ({ visible, hide, product, providers }) => {
   const handleUpdate = async () => {
     setLoading(true);
 
+    try {
+      if (sku !== product.sku) {
+        const qSku = query(collection(db, "products"), where("sku", "==", sku));
+        const snapSku = await getDocs(qSku);
+        if (!snapSku.empty) {
+          setLoading(false);
+          return Alert.alert("Error", "El SKU ya existe.");
+        }
+      }
+
+      if (name !== product.name) {
+        const qName = query(collection(db, "products"), where("name", "==", name));
+        const snapName = await getDocs(qName);
+        if (!snapName.empty) {
+          setLoading(false);
+          return Alert.alert("Error", "El nombre de producto ya existe.");
+        }
+      }
+    } catch (e) {
+      console.error("Error validando unicidad:", e);
+    }
+
     let finalStock = 0;
     if (unitType === 'Unidad') {
       finalStock = parseInt(stock) || 0;
@@ -1149,6 +1171,13 @@ const AddProductModal = ({ visible, hide, providers }) => {
         return Alert.alert("Error", "El SKU ya existe.");
       }
 
+      const qName = query(collection(db, "products"), where("name", "==", name));
+      const snapshotName = await getDocs(qName);
+      if (!snapshotName.empty) {
+        setLoading(false);
+        return Alert.alert("Error", "El nombre de producto ya existe.");
+      }
+
       await addDoc(collection(db, "products"), {
         sku, name, category, brand, provider,
         location, aisle: location,
@@ -1399,13 +1428,36 @@ function StockList() {
         {filteredProducts.map((p) => {
           const displayStock = (p.totalStock !== undefined ? p.totalStock : (p.stock !== undefined ? p.stock : p.quantity)) || 0;
           const displayLoc = p.location || p.aisle || '-';
+
+          // Calculate FEFO Status
+          let fefoStatus = null;
+          if (p.expiryDate) {
+            const today = new Date();
+            const expiry = p.expiryDate.toDate ? p.expiryDate.toDate() : new Date(p.expiryDate);
+            const diffTime = expiry.getTime() - today.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays < 0) fefoStatus = { label: 'Vencido', color: '#B71C1C', bg: '#FFEBEE' };
+            else if (diffDays <= 7) fefoStatus = { label: 'Vence pronto', color: '#F57C00', bg: '#FFF3E0' };
+            else if (diffDays <= 30) fefoStatus = { label: 'Por vencer', color: '#FBC02D', bg: '#FFFDE7' };
+          }
+
           return (
             <Card key={p.id} style={styles.card}>
               <Card.Content>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
-                  <Text style={{ fontWeight: 'bold', fontSize: 16, flex: 1 }}>{p.name}</Text>
-                  <Chip compact style={{ backgroundColor: '#E0F7FA', height: 28, marginRight: 5 }} textStyle={{ fontSize: 10 }}>{p.brand || 'Sin Marca'}</Chip>
-                  <Chip compact style={{ backgroundColor: '#E0F7FA', height: 28 }} textStyle={{ fontSize: 10 }}>{p.category || 'General'}</Chip>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: 'bold', fontSize: 16 }}>{p.name}</Text>
+                    {fefoStatus && (
+                      <Chip compact style={{ backgroundColor: fefoStatus.bg, marginTop: 4, alignSelf: 'flex-start' }} textStyle={{ fontSize: 10, color: fefoStatus.color, fontWeight: 'bold' }}>
+                        {fefoStatus.label}
+                      </Chip>
+                    )}
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Chip compact style={{ backgroundColor: '#E0F7FA', height: 28, marginBottom: 4 }} textStyle={{ fontSize: 10 }}>{p.brand || 'Sin Marca'}</Chip>
+                    <Chip compact style={{ backgroundColor: '#E0F7FA', height: 28 }} textStyle={{ fontSize: 10 }}>{p.category || 'General'}</Chip>
+                  </View>
                 </View>
                 <Divider style={{ marginBottom: 10 }} />
                 <View style={{ flexDirection: 'row', marginBottom: 5 }}>
@@ -1414,7 +1466,7 @@ function StockList() {
                 </View>
                 <View style={{ flexDirection: 'row', marginBottom: 10 }}>
                   <View style={{ flex: 1 }}><Text variant="labelSmall" style={{ color: '#666' }}>Bodega</Text><Text variant="bodyMedium">{displayLoc}</Text></View>
-                  <View style={{ flex: 1 }}><Text variant="labelSmall" style={{ color: '#666' }}>Mí­nimo</Text><Text variant="bodyMedium">{p.minStock || 10}</Text></View>
+                  <View style={{ flex: 1 }}><Text variant="labelSmall" style={{ color: '#666' }}>Mínimo</Text><Text variant="bodyMedium">{p.minStock || 10}</Text></View>
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f9f9f9', padding: 8, borderRadius: 5 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>

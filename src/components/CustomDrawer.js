@@ -4,12 +4,39 @@ import { DrawerContentScrollView, DrawerItem } from '@react-navigation/drawer';
 import { Text, Avatar, Divider, useTheme, Badge } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
-import { auth } from '../../firebaseConfig';
+import { auth, db } from '../../firebaseConfig';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { useNotifications } from '../context/NotificationsContext';
 
 export default function CustomDrawer(props) {
     const theme = useTheme();
     const { badgeCount } = useNotifications();
+    const user = auth.currentUser;
+
+    const [userData, setUserData] = useState({
+        name: user?.displayName || user?.email?.split('@')[0] || 'Usuario',
+        email: user?.email || '',
+        photoURL: null,
+        role: 'Usuario'
+    });
+
+    useEffect(() => {
+        if (user) {
+            const userDocRef = doc(db, "users", user.uid);
+            const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    setUserData({
+                        name: data.name || user.displayName || 'Usuario',
+                        email: user.email,
+                        photoURL: data.photoURL || null,
+                        role: data.role || 'Usuario'
+                    });
+                }
+            });
+            return () => unsubscribe();
+        }
+    }, [user]);
 
     const handleLogout = async () => {
         try {
@@ -19,10 +46,8 @@ export default function CustomDrawer(props) {
         }
     };
 
-    // Derive name from email
-    const user = auth.currentUser;
-    const displayName = user?.email ? user.email.split('@')[0] : 'Usuario';
-    const formattedName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+    // Fallback avatar if no photoURL
+    const fallbackAvatar = `https://ui-avatars.com/api/?name=${userData.name}&background=random&color=fff`;
 
     return (
         <View style={{ flex: 1 }}>
@@ -34,19 +59,19 @@ export default function CustomDrawer(props) {
                 <View style={styles.header}>
                     <View style={styles.profileRow}>
                         <Avatar.Image
-                            source={{ uri: `https://ui-avatars.com/api/?name=${formattedName}&background=random&color=fff` }}
+                            source={{ uri: userData.photoURL || fallbackAvatar }}
                             size={50}
                             style={styles.avatar}
                         />
                         <View style={styles.infoCol}>
-                            <Text style={styles.name}>{formattedName}</Text>
-                            <Text style={styles.id}>{user?.email || 'Invitado'}</Text>
+                            <Text style={styles.name}>{userData.name}</Text>
+                            <Text style={styles.id}>{userData.email || 'Invitado'}</Text>
                         </View>
                     </View>
 
                     <View style={styles.statusContainer}>
                         <MaterialCommunityIcons name="circle" color="#4CAF50" size={10} style={{ marginRight: 5 }} />
-                        <Text style={styles.statusText}>EN LÍNEA • BODEGA CENTRAL</Text>
+                        <Text style={styles.statusText}>EN LÍNEA • {userData.role === 'Admin' ? 'GERENCIA' : 'BODEGA CENTRAL'}</Text>
                     </View>
                 </View>
 
