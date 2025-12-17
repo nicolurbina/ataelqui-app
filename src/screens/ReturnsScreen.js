@@ -109,7 +109,15 @@ function NewReturnForm({ onReturnCreated }) {
   };
 
   const handleSubmit = async () => {
-    if (!client || !invoice || items.length === 0) return Alert.alert("Error", "Completa los campos obligatorios");
+    // Strict Validation
+    if (!client || client.trim() === '') return Alert.alert("Error", "El Cliente es obligatorio.");
+    if (!invoice || invoice.trim() === '') return Alert.alert("Error", "El N° de Documento es obligatorio.");
+    if (!vehicle || vehicle.trim() === '') return Alert.alert("Error", "El Vehículo es obligatorio.");
+    if (!route || route.trim() === '') return Alert.alert("Error", "La Ruta es obligatoria.");
+    if (!driver || driver.trim() === '') return Alert.alert("Error", "El Chofer es obligatorio.");
+
+    if (items.length === 0) return Alert.alert("Error", "Debes agregar al menos un producto.");
+
     setLoading(true);
 
     try {
@@ -205,7 +213,7 @@ function NewReturnForm({ onReturnCreated }) {
       </View>
 
       <View style={{ marginBottom: 10 }}>
-        <Text style={styles.label}>Observaciones / Descripción del Motivo</Text>
+        <Text style={styles.label}>Observaciones / Descripción del Motivo (Opcional)</Text>
         <TextInput
           placeholder="Detalles adicionales sobre la devolución..."
           value={observations}
@@ -556,13 +564,49 @@ function ReturnsHistory() {
   const REASONS_FILTER = ["Todos los Motivos", "Producto Vencido", "Envase Dañado", "Error de Pedido", "Rechazo Cliente"];
 
   useEffect(() => {
-    const q = query(collection(db, "returns"), orderBy("date", "desc"));
+    // FETCH ALL - No orderBy, No where. Sort client-side for safety.
+    const q = query(collection(db, "returns"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const all = snapshot.docs.map(doc => {
         const data = doc.data();
-        return { id: doc.id, ...data, jsDate: data.date?.toDate ? data.date.toDate() : new Date() };
+        let jsDate = new Date(); // Fallback
+
+        // Robust Date Parsing
+        if (data.date) {
+          if (data.date.toDate) jsDate = data.date.toDate();
+          else if (typeof data.date === 'string') {
+            if (data.date.includes('/')) {
+              const parts = data.date.split('/');
+              if (parts.length === 3) jsDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+            } else if (data.date.includes('-')) {
+              jsDate = new Date(data.date);
+            }
+          } else if (data.date instanceof Date) {
+            jsDate = data.date;
+          }
+        }
+
+        // Data Normalization (Safeguard against missing/renamed fields)
+        const client = data.client || data.customer || "Sin Cliente";
+        const docType = data.docType || "Doc";
+        const invoice = data.invoice || "?";
+        const rawItems = Array.isArray(data.items) ? data.items : [];
+        const items = rawItems.map(i => ({
+          ...i,
+          productName: i.productName || i.name || "Producto Desconocido",
+          quantity: i.quantity || i.qty || 0,
+          price: i.price || i.cost || 0,
+          reason: i.reason || "Sin motivo"
+        }));
+
+        return { id: doc.id, ...data, client, docType, invoice, items, jsDate };
       });
-      setHistory(all.filter(i => i.status !== 'Pendiente'));
+
+      // Sort DESC by Date
+      all.sort((a, b) => b.jsDate - a.jsDate);
+
+      // Show ALL (Except "deleted" if you had that status, but we show Pendiente/Aprobado/Rechazado)
+      setHistory(all);
     });
     return () => unsubscribe();
   }, []);
@@ -579,10 +623,10 @@ function ReturnsHistory() {
       (item.id && item.id.toLowerCase().includes(search.toLowerCase())) ||
       (item.invoice && item.invoice.includes(search));
 
-    // Date Filter
+    // Date Filter (Compare Strings to ignore time)
     let dateMatch = true;
     if (date) {
-      dateMatch = item.jsDate.toDateString() === date.toDateString();
+      dateMatch = item.jsDate.toLocaleDateString() === date.toLocaleDateString();
     }
 
     // Origin Filter
@@ -719,15 +763,19 @@ function ReturnsHistory() {
 
                 <Text variant="bodySmall" style={{ fontWeight: 'bold', color: '#666', marginBottom: 5 }}>Productos Devueltos:</Text>
                 <View style={{ backgroundColor: '#FAFAFA', borderRadius: 8, padding: 8 }}>
-                  {item.items?.map((prod, idx) => (
-                    <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <Text style={{ fontSize: 13, flex: 1, fontWeight: '500' }}>{prod.productName}</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <Text style={{ fontSize: 11, color: '#F36F21', fontWeight: 'bold' }}>x{prod.quantity}</Text>
-                        <Text style={{ fontSize: 10, color: '#999' }}>({prod.reason})</Text>
+                  {item.items && item.items.length > 0 ? (
+                    item.items.map((prod, idx) => (
+                      <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <Text style={{ fontSize: 13, flex: 1, fontWeight: '500' }}>{prod.productName}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                          <Text style={{ fontSize: 11, color: '#F36F21', fontWeight: 'bold' }}>x{prod.quantity}</Text>
+                          <Text style={{ fontSize: 10, color: '#999' }}>({prod.reason})</Text>
+                        </View>
                       </View>
-                    </View>
-                  ))}
+                    ))
+                  ) : (
+                    <Text style={{ fontSize: 12, color: '#999', fontStyle: 'italic', textAlign: 'center' }}>Sin detalles de productos.</Text>
+                  )}
                 </View>
 
                 <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 }}>

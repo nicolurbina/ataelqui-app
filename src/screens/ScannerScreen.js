@@ -121,15 +121,25 @@ export default function ScannerScreen() {
   };
 
   const handleSaveProduct = async () => {
-    if (!name || !category || !location) return Alert.alert("Error", "Faltan campos obligatorios.");
+    // 1. Validate All Required Fields (Strict)
+    if (!currentSku || currentSku.trim() === '') return Alert.alert("Error", "El SKU es obligatorio.");
+    if (!category || category.trim() === '') return Alert.alert("Error", "La Categoría es obligatoria.");
+    if (!brand || brand.trim() === '') return Alert.alert("Error", "La Marca es obligatoria.");
+    if (!name || name.trim() === '') return Alert.alert("Error", "El Nombre del Producto es obligatorio.");
+    if (!provider || provider.trim() === '') return Alert.alert("Error", "El Proveedor es obligatorio.");
+    if (!location || location.trim() === '') return Alert.alert("Error", "La Bodega es obligatoria.");
+    if (!minStock || minStock.trim() === '') return Alert.alert("Error", "El Stock Mínimo es obligatorio.");
 
     let totalQty = 0;
     let details = "";
 
     if (format === 'unidad') {
+      if (!singleQty || singleQty.trim() === '') return Alert.alert("Error", "La Cantidad es obligatoria.");
       totalQty = parseInt(singleQty);
       details = `${totalQty} un.`;
     } else {
+      if (!boxCount || boxCount.trim() === '') return Alert.alert("Error", "El N° de Cajas es obligatorio.");
+      if (!unitsPerBox || unitsPerBox.trim() === '') return Alert.alert("Error", "Las Unidades por Caja son obligatorias.");
       const boxes = parseInt(boxCount);
       const perBox = parseInt(unitsPerBox);
       if (!boxes || !perBox) return Alert.alert("Error", "Datos de caja inválidos.");
@@ -137,7 +147,7 @@ export default function ScannerScreen() {
       details = `${boxes} cajas x ${perBox} un.`;
     }
 
-    if (!totalQty || totalQty <= 0) return Alert.alert("Error", "Cantidad inválida.");
+    if (!totalQty || totalQty <= 0) return Alert.alert("Error", "Cantidad inválida (debe ser mayor a 0).");
 
     setLoading(true);
     try {

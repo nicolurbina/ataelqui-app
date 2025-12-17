@@ -81,6 +81,25 @@ const EditProductModal = ({ visible, hide, product, providers }) => {
   }, [product]);
 
   const handleUpdate = async () => {
+    // 1. Validate All Fields (Strict)
+    if (!sku || sku.trim() === '') return Alert.alert("Error", "El SKU es obligatorio.");
+    if (!category || category.trim() === '') return Alert.alert("Error", "La Categoría es obligatoria.");
+    if (!brand || brand.trim() === '') return Alert.alert("Error", "La Marca es obligatoria.");
+    if (!name || name.trim() === '') return Alert.alert("Error", "El nombre es obligatorio.");
+    if (!provider || provider.trim() === '') return Alert.alert("Error", "El Proveedor es obligatorio.");
+    if (!location || location.trim() === '') return Alert.alert("Error", "La Bodega es obligatoria.");
+    if (!minStock || minStock.trim() === '') return Alert.alert("Error", "El Stock Mínimo es obligatorio.");
+
+    let finalStock = 0;
+    if (unitType === 'Unidad') {
+      if (!stock || stock.trim() === '') return Alert.alert("Error", "El Stock es obligatorio.");
+      finalStock = parseInt(stock) || 0;
+    } else {
+      if (!numBoxes || numBoxes.trim() === '') return Alert.alert("Error", "El N° de Cajas es obligatorio.");
+      if (!unitsPerBox || unitsPerBox.trim() === '') return Alert.alert("Error", "Las Unidades por Caja son obligatorias.");
+      finalStock = (parseInt(numBoxes) || 0) * (parseInt(unitsPerBox) || 0);
+    }
+
     setLoading(true);
 
     try {
@@ -103,13 +122,6 @@ const EditProductModal = ({ visible, hide, product, providers }) => {
       }
     } catch (e) {
       console.error("Error validando unicidad:", e);
-    }
-
-    let finalStock = 0;
-    if (unitType === 'Unidad') {
-      finalStock = parseInt(stock) || 0;
-    } else {
-      finalStock = (parseInt(numBoxes) || 0) * (parseInt(unitsPerBox) || 0);
     }
 
     try {
@@ -259,76 +271,67 @@ const EditProductModal = ({ visible, hide, product, providers }) => {
   );
 };
 
+
 // --- MODAL 2: REPORTAR MERMA ---
-const ReportWasteModal = ({ visible, hide, product, products }) => {
+const ReportWasteModal = ({ visible, hide, product }) => {
   const [qty, setQty] = useState('');
   const [cause, setCause] = useState('Vencido');
-  const [loading, setLoading] = useState(false);
-
-  // Nuevos campos
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const [batch, setBatch] = useState('');
   const [unitCost, setUnitCost] = useState('');
+  const [loading, setLoading] = useState(false);
   const [showCauseMenu, setShowCauseMenu] = useState(false);
 
   const CAUSES = ["Vencido", "Daño", "Robo", "Consumo Interno", "Otro"];
 
   useEffect(() => {
-    if (product) {
-      setSelectedProduct(product);
-      setSearchQuery(product.name || '');
-    } else {
-      setSelectedProduct(null);
-      setSearchQuery('');
+    if (visible) {
+      setQty('');
+      setBatch(product?.lot || product?.batch || '');
+      setUnitCost(product?.cost ? String(product.cost) : (product?.price ? String(product.price) : ''));
+      setCause('Vencido');
     }
-    setQty('');
-    setBatch('');
-    setUnitCost('');
-    setCause('Vencido');
-  }, [product, visible]);
-
-  const handleSelectProduct = (p) => {
-    setSelectedProduct(p);
-    setSearchQuery(p.name);
-    setShowSuggestions(false);
-  };
+  }, [visible, product]);
 
   const handleConfirmWaste = async () => {
-    if (!selectedProduct) return Alert.alert("Error", "Selecciona un producto.");
-    if (!qty) return Alert.alert("Error", "Ingresa la cantidad.");
+    if (!qty || qty.trim() === '') return Alert.alert("Error", "Ingresa la cantidad.");
+    if (!batch || batch.trim() === '') return Alert.alert("Error", "El Lote es obligatorio.");
+    if (!cause) return Alert.alert("Error", "La Causa es obligatoria.");
+    if (!unitCost || unitCost.trim() === '') return Alert.alert("Error", "El Costo es obligatorio.");
 
     setLoading(true);
     try {
       const deduction = parseInt(qty);
-      const currentStock = selectedProduct.stock || selectedProduct.quantity || 0;
+      const currentStock = product.totalStock !== undefined ? product.totalStock : (product.stock || product.quantity || 0);
 
+      // 1. Check Stock
       if (currentStock < deduction) {
         setLoading(false);
-        return Alert.alert("Error", "Stock insuficiente.");
+        return Alert.alert("Error", `Stock insuficiente. Tienes: ${currentStock}`);
       }
 
-      const newStock = currentStock - deduction;
-
-      // Actualizar producto
-      await updateDoc(doc(db, "products", selectedProduct.id), { stock: newStock, quantity: newStock });
-
-      // Registrar en Waste
-      await addDoc(collection(db, "waste"), {
-        sku: selectedProduct.sku,
-        productName: selectedProduct.name,
-        quantity: deduction,
-        cause,
-        batch,
-        unitCost: parseFloat(unitCost) || 0,
-        date: new Date()
+      // 2. Deduct Stock
+      await updateDoc(doc(db, "products", product.id), {
+        stock: currentStock - deduction,
+        totalStock: currentStock - deduction,
+        quantity: currentStock - deduction
       });
 
-      // Registrar en Kardex
+      // 3. Record Waste
+      await addDoc(collection(db, "waste"), {
+        sku: product.sku || "SIN-SKU",
+        productName: product.name,
+        quantity: deduction,
+        cause,
+        lot: batch,
+        cost: parseFloat(unitCost) || 0,
+        date: new Date(),
+        user: "Bodeguero"
+      });
+
+      // 4. Record Kardex
       await addDoc(collection(db, "kardex"), {
-        sku: selectedProduct.sku,
-        productName: selectedProduct.name,
+        sku: product.sku || "SIN-SKU",
+        productName: product.name,
         type: "Salida",
         quantity: deduction,
         reason: `Merma (${cause})`,
@@ -336,68 +339,35 @@ const ReportWasteModal = ({ visible, hide, product, products }) => {
         user: "Bodeguero"
       });
 
-      // Check for Low Stock
-      const minStock = selectedProduct.minStock || 10;
-      if (newStock <= minStock) {
-        await addDoc(collection(db, "notifications"), {
-          title: 'Quiebre de Stock',
-          desc: `El producto ${selectedProduct.name} ha alcanzado el nivel crítico. Stock actual: ${newStock}.`,
-          type: 'Stock',
-          color: '#D32F2F',
-          icon: 'alert-octagon',
-          date: new Date().toISOString().split('T')[0],
-          isSystem: true
-        });
-      }
-
-      Alert.alert("Listo", `Descontadas ${deduction} un.`);
+      Alert.alert("Éxito", "Merma registrada correctamente.");
       hide();
-    } catch (e) { Alert.alert("Error", e.message); } finally { setLoading(false); }
+    } catch (e) {
+      Alert.alert("Error", e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const filteredProducts = products ? products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.includes(searchQuery)) : [];
+  if (!product) return null;
 
   return (
     <Portal>
       <Modal visible={visible} onDismiss={hide} contentContainerStyle={styles.modal}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-          <Text variant="headlineSmall" style={{ fontWeight: 'bold', color: '#333' }}>Registrar Nueva Merma</Text>
+          <Text variant="headlineSmall" style={{ fontWeight: 'bold' }}>Reportar Merma</Text>
           <IconButton icon="close" size={24} onPress={hide} />
         </View>
 
-        <Text style={styles.label}>Producto (Nombre o SKU)</Text>
-        <View>
-          <TextInput
-            placeholder="Buscar por SKU o Nombre..."
-            value={searchQuery}
-            onChangeText={(t) => { setSearchQuery(t); setShowSuggestions(true); }}
-            mode="outlined"
-            style={styles.input}
-            dense
-            right={<TextInput.Icon icon="magnify" />}
-          />
-          {showSuggestions && searchQuery.length > 0 && (
-            <View style={{ maxHeight: 150, backgroundColor: '#f9f9f9', borderWidth: 1, borderColor: '#eee', borderRadius: 5 }}>
-              <ScrollView nestedScrollEnabled>
-                {filteredProducts.map(p => (
-                  <TouchableOpacity key={p.id} onPress={() => handleSelectProduct(p)} style={{ padding: 10, borderBottomWidth: 1, borderBottomColor: '#eee' }}>
-                    <Text style={{ fontWeight: 'bold' }}>{p.name}</Text>
-                    <Text variant="bodySmall">{p.sku}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          )}
-        </View>
+        <Text style={{ marginBottom: 10, fontWeight: 'bold' }}>{product.name}</Text>
 
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Lote</Text>
-            <TextInput value={batch} onChangeText={setBatch} mode="outlined" placeholder="L-2023-X" style={styles.input} dense />
+            <Text style={styles.label}>Cantidad</Text>
+            <TextInput value={qty} onChangeText={setQty} keyboardType="numeric" mode="outlined" style={styles.input} dense placeholder="0" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Cantidad</Text>
-            <TextInput value={qty} onChangeText={setQty} keyboardType="numeric" mode="outlined" placeholder="0" style={styles.input} dense />
+            <Text style={styles.label}>Lote</Text>
+            <TextInput value={batch} onChangeText={setBatch} mode="outlined" style={styles.input} dense placeholder="Lote" />
           </View>
         </View>
 
@@ -417,19 +387,17 @@ const ReportWasteModal = ({ visible, hide, product, products }) => {
             </Menu>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Costo Unitario</Text>
-            <TextInput value={unitCost} onChangeText={setUnitCost} keyboardType="numeric" mode="outlined" placeholder="0" style={styles.input} dense />
+            <Text style={styles.label}>Costo Unit.</Text>
+            <TextInput value={unitCost} onChangeText={setUnitCost} keyboardType="numeric" mode="outlined" style={styles.input} dense placeholder="0" />
           </View>
         </View>
 
-        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-          <Button mode="outlined" onPress={hide} textColor="#666" style={{ borderColor: '#ccc' }}>Cancelar</Button>
-          <Button mode="contained" onPress={handleConfirmWaste} loading={loading} buttonColor="#D32F2F">Registrar Pérdida</Button>
-        </View>
+        <Button mode="contained" onPress={handleConfirmWaste} loading={loading} buttonColor="#D32F2F" style={{ marginTop: 10 }}>Confirmar Pérdida</Button>
       </Modal>
     </Portal>
   );
 };
+
 
 // --- MODAL 3: DETALLE DE CONTEO (LINEAR WORKFLOW) ---
 const CountDetailModal = ({ visible, hide, count }) => {
@@ -1151,14 +1119,22 @@ const AddProductModal = ({ visible, hide, providers }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   const handleSave = async () => {
-    if (!sku || !name || !category || !location) {
-      return Alert.alert("Error", "Completa los campos obligatorios (SKU, Nombre, Categoría, Bodega)");
-    }
+    // Strict Validation
+    if (!sku || sku.trim() === '') return Alert.alert("Error", "El SKU es obligatorio.");
+    if (!name || name.trim() === '') return Alert.alert("Error", "El Nombre es obligatorio.");
+    if (!category || category.trim() === '') return Alert.alert("Error", "La Categoría es obligatoria.");
+    if (!brand || brand.trim() === '') return Alert.alert("Error", "La Marca es obligatoria.");
+    if (!provider || provider.trim() === '') return Alert.alert("Error", "El Proveedor es obligatorio.");
+    if (!location || location.trim() === '') return Alert.alert("Error", "La Bodega es obligatoria.");
+    if (!minStock || minStock.trim() === '') return Alert.alert("Error", "El Stock Mínimo es obligatorio.");
 
     let finalStock = 0;
     if (unitType === 'Unidad') {
+      if (!stock || stock.trim() === '') return Alert.alert("Error", "El Stock Inicial es obligatorio.");
       finalStock = parseInt(stock) || 0;
     } else {
+      if (!numBoxes || numBoxes.trim() === '') return Alert.alert("Error", "El N° de Cajas es obligatorio.");
+      if (!unitsPerBox || unitsPerBox.trim() === '') return Alert.alert("Error", "Unidades por Caja es obligatorio.");
       finalStock = (parseInt(numBoxes) || 0) * (parseInt(unitsPerBox) || 0);
     }
 

@@ -117,7 +117,12 @@ export default function WasteScreen() {
 
   // --- SUBMIT LOGIC ---
   const handleConfirmWaste = async () => {
-    if (!selectedProduct || !qty) return Alert.alert("Error", "Selecciona un producto e ingresa la cantidad.");
+    if (!selectedProduct) return Alert.alert("Error", "Selecciona un producto.");
+    if (!qty || qty.trim() === '') return Alert.alert("Error", "Ingresa la cantidad.");
+    if (!lot || lot.trim() === '') return Alert.alert("Error", "El Lote es obligatorio.");
+    if (!cause) return Alert.alert("Error", "La Causa es obligatoria.");
+    if (!unitCost || unitCost.trim() === '') return Alert.alert("Error", "El Costo Unitario es obligatorio.");
+
     setLoading(true);
 
     try {

@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
-import { Text, Card, Avatar, Button, IconButton, Chip } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { collection, query, onSnapshot, doc, getDoc } from 'firebase/firestore';
-import { db, auth } from '../../firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
+import { collection, doc, onSnapshot, query } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Avatar, Button, Card, Chip, IconButton, Text } from 'react-native-paper';
+import { auth, db } from '../../firebaseConfig';
 
 export default function HomeScreen() {
     const navigation = useNavigation();
@@ -121,22 +121,68 @@ export default function HomeScreen() {
         const today = new Date();
 
         // Helper to process expiry
-        const processExpiry = (dateStr, name, sku, category, sourceId) => {
-            if (!dateStr) return;
-            // Handle Firestore Timestamp or Date String
-            const exp = dateStr.toDate ? dateStr.toDate() : new Date(dateStr);
-            if (isNaN(exp.getTime())) return;
+        const processExpiry = (dateInput, name, sku, category, sourceId) => {
+            if (!dateInput) return;
 
-            const diffTime = exp.getTime() - today.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            let expDate = null;
 
-            // Alerta Crítica (<= 7 días - Expanded from 5 for better visibility)
+            // 1. Resolve to Date Object (Robust)
+            try {
+                if (dateInput.toDate) {
+                    // Firestore Timestamp
+                    expDate = dateInput.toDate();
+                } else if (typeof dateInput === 'string') {
+                    // Strings
+                    if (dateInput.includes('/')) {
+                        // Assume DD/MM/YYYY (Common in LatAm)
+                        const parts = dateInput.split('/');
+                        if (parts.length === 3) {
+                            expDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                        }
+                    } else if (dateInput.includes('-')) {
+                        // Assume YYYY-MM-DD (ISO) - Parse manually to force Local Time (avoid UTC shift)
+                        const parts = dateInput.split('T')[0].split('-');
+                        if (parts.length === 3) {
+                            expDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                        }
+                    }
+
+                    // Fallback
+                    if (!expDate || isNaN(expDate.getTime())) {
+                        expDate = new Date(dateInput);
+                    }
+                } else if (dateInput instanceof Date) {
+                    expDate = dateInput;
+                }
+            } catch (e) { return; }
+
+            if (!expDate || isNaN(expDate.getTime())) return;
+
+            // 2. Normalize to Midnight for accurate Day-Diff
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+
+            const target = new Date(expDate);
+            target.setHours(0, 0, 0, 0);
+
+            const diffTime = target.getTime() - now.getTime();
+            const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+            // Alerta Crítica (<= 7 días)
             if (diffDays <= 7 && diffDays < minDiff) {
                 minDiff = diffDays;
                 topAlert = { id: sourceId, name: name, sku: sku, days: diffDays, category: category };
             }
 
             // Proyección 30 días
+            // Note: We include negative diffDays (expired) in the first bucket? 
+            // Previous logic: if (diffDays >= 0 && diffDays <= 30)
+            // Ideally: Sem 1 should include "Everything expiring this week + Overdue" or just "Upcoming"?
+            // Usually Projections show UPCOMING. Overdue is handled by alerts.
+            // But let's stick to user request "No se mueve". 
+            // If they have overdue items, maybe they want to see them?
+            // Let's keep it strictly [0, 30] for now to match title "(30D)"
+
             if (diffDays >= 0 && diffDays <= 30) {
                 if (diffDays <= 7) projection[0]++;
                 else if (diffDays <= 14) projection[1]++;
@@ -176,20 +222,23 @@ export default function HomeScreen() {
         const max = Math.max(...data, 1); // Evitar división por 0
         // Colores: Rojo (Urgente), Naranja, Amarillo, Verde (Lejano)
         const colors = ['#FF5252', '#FF9800', '#FFEB3B', '#00E676'];
+        const MAX_BAR_HEIGHT = 80; // Altura máxima en píxeles para las barras
 
         return (
             <Card style={styles.chartCard}>
                 <Card.Content>
                     <Text variant="titleMedium" style={{ fontWeight: 'bold', color: '#555', marginBottom: 25, letterSpacing: 0.5 }}>PROYECCIÓN VENCIMIENTOS (30D)</Text>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: 120 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: 140 }}>
                         {data.map((value, index) => {
-                            const barHeight = (value / max) * 100; // Porcentaje relativo al máximo
+                            const barHeight = (value / max) * MAX_BAR_HEIGHT;
+                            const finalHeight = Math.max(barHeight, 4); // Mínimo 4px visual
+
                             return (
-                                <View key={index} style={{ alignItems: 'center', width: 40 }}>
+                                <View key={index} style={{ alignItems: 'center', width: 40, justifyContent: 'flex-end' }}>
                                     <Text style={{ fontWeight: 'bold', color: colors[index], marginBottom: 5, fontSize: 16 }}>{value}</Text>
                                     <View style={{
                                         width: '100%',
-                                        height: `${Math.max(barHeight, 5)}%`, // Mínimo 5% para que se vea algo
+                                        height: finalHeight,
                                         backgroundColor: colors[index],
                                         borderRadius: 8,
                                         borderBottomLeftRadius: 2,
